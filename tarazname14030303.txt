@@ -1,0 +1,1095 @@
+import React, { use, useEffect, useState } from 'react';
+import axios from 'axios';
+import { IconButton } from '@mui/material';
+import { KeyboardArrowDown, KeyboardArrowUp } from '@mui/icons-material';
+import { useHolding } from '../../context/HoldingContext';
+import DateRangePicker from '../../components/DateRangePicker';
+import HoldingsNavbar from '../../components/HoldingsNavbar';
+import ReactEcharts from 'echarts-for-react';
+import * as echarts from 'echarts';
+
+const Tarazname = () => {
+  const { selectedHolding, startDate, endDate, currentHoldingData } = useHolding();
+
+  const [isLoading, setIsLoading] = useState(false);
+  const [selectedCompany, setSelectedCompany] = useState('');
+  const [taraznameData, setTaraznameData] = useState([]);
+  const [openCategory1, setOpenCategory1] = useState({});
+  const [openCategory2, setOpenCategory2] = useState({});
+  const [hoveredHolding, setHoveredHolding] = useState(null);
+  const [allCompaniesData, setAllCompaniesData] = useState([]);
+
+  useEffect(() => {
+    if (selectedHolding && endDate) {
+      fetchTaraznameData();
+    }
+  }, [selectedHolding, startDate, endDate, selectedCompany]);
+
+  const handleCompanyClick = (companyName) => {
+    // If clicking on already selected company, deselect it to show aggregated data
+    if (selectedCompany === companyName) {
+      setSelectedCompany('');
+    } else {
+      setSelectedCompany(companyName);
+    }
+  };
+
+  const handleHoldingHover = () => {
+    setHoveredHolding(selectedHolding);
+  };
+
+  const handleHoldingLeave = () => {
+    setHoveredHolding(null);
+  };
+
+  const toggleCategory1 = (name) => {
+    setOpenCategory1((prev) => ({ ...prev, [name]: !prev[name] }));
+  };
+
+  const toggleCategory2 = (key) => {
+    setOpenCategory2((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  const fetchTaraznameData = async () => {
+    if (!selectedHolding || !endDate) return;
+    try {
+      setIsLoading(true);
+      const start = startDate || endDate.subtract(1, 'month');
+      const { data } = await axios.get(
+        `${balance_sheet}?start_date=${start.format("YYYYMMDD")}&end_date=${endDate.format("YYYYMMDD")}&holding_name=${selectedHolding}`
+      );
+      
+      // Store all companies data
+      setAllCompaniesData(data);
+      
+      if (selectedCompany) {
+        // Transform data for specific company
+        const transformedData = data.map(yearData => {
+          // Find the company that matches selectedCompany
+          const companyData = yearData.companies.find(
+            company => company.company_Name === selectedCompany
+          );
+          
+          if (companyData) {
+            return {
+              jyear: yearData.jyear,
+              categories: companyData.categories,
+              balance: 0
+            };
+          }
+          return null;
+        }).filter(Boolean); // Remove null entries
+        
+        setTaraznameData(transformedData);
+      } else {
+        // Aggregate data for all companies under the holding
+        const aggregatedData = data.map(yearData => {
+          // Create a deep copy of the first company's structure to use as a template
+          if (yearData.companies.length === 0) return null;
+          
+          // Start with the first company's structure
+          const template = JSON.parse(JSON.stringify(yearData.companies[0]));
+          
+          // Aggregate all companies data for this year
+          yearData.companies.forEach(company => {
+            if (company.categories) {
+              company.categories.forEach((cat1, catIndex) => {
+                // If this is the first company being processed, template already has its data
+                if (company === yearData.companies[0]) return;
+                
+                // Find matching category in template
+                const templateCat = template.categories.find(tc => tc.statement_Category1 === cat1.statement_Category1);
+                
+                if (templateCat) {
+                  // Add to total
+                  templateCat.total += cat1.total;
+                  
+                  // Process subcategories
+                  cat1.subCategories.forEach(cat2 => {
+                    const templateSubCat = templateCat.subCategories.find(
+                      tsc => tsc.statement_Category2 === cat2.statement_Category2
+                    );
+                    
+                    if (templateSubCat) {
+                      // Add to subcategory total
+                      templateSubCat.total += cat2.total;
+                      
+                      // Process items
+                      cat2.items.forEach(item => {
+                        const templateItem = templateSubCat.items.find(
+                          ti => ti.statement_Title === item.statement_Title
+                        );
+                        
+                        if (templateItem) {
+                          // Add to item amount
+                          templateItem.amount += item.amount;
+                        } else {
+                          // Add new item if it doesn't exist in template
+                          templateSubCat.items.push({...item});
+                        }
+                      });
+                    } else {
+                      // Add new subcategory if it doesn't exist in template
+                      templateCat.subCategories.push({...cat2});
+                    }
+                  });
+                } else {
+                  // Add new category if it doesn't exist in template
+                  template.categories.push({...cat1});
+                }
+              });
+            }
+          });
+          
+          return {
+            jyear: yearData.jyear,
+            categories: template.categories,
+            balance: 0
+          };
+        }).filter(Boolean);
+        
+        setTaraznameData(aggregatedData);
+      }
+    } catch (err) {
+      console.error('Error fetching tarazname data:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const allYears = Array.from(
+    new Set(taraznameData.map((entry) => entry.jyear))
+  );
+
+  const getCellValue = (category1, category2, itemTitle, year) => {
+    const yearData = taraznameData.find((entry) => entry.jyear === year);
+    if (!yearData) return '';
+
+    const cat1 = yearData.categories.find(
+      (c) => c.statement_Category1 === category1
+    );
+    if (!cat1) return '';
+
+    const cat2 = cat1.subCategories.find(
+      (sc) => sc.statement_Category2 === category2
+    );
+    if (!cat2) return '';
+
+    const item = cat2.items.find((it) => it.statement_Title === itemTitle);
+    return item ? item.amount.toLocaleString() : '';
+  };
+
+  // نمودار نسبت جاری
+  const [nesbatJari, setNesbatJari] = useState([]);
+  const fetchGetAllNesbatJari = async () => {
+    if (!selectedCompany || !endDate) return;
+    try {
+      const start = startDate || endDate.subtract(1, 'month');
+      const { data } = await axios.get(
+        `http://192.168.42.20:2093/Project/1CurrentRatio?start_date=${start.format("YYYYMMDD")}&end_date=${endDate.format("YYYYMMDD")}&company_name=${selectedCompany}`
+      );
+      setNesbatJari(data);
+    } catch (err) {
+      console.error('Error fetching nesbat jari:', err);
+    }
+  };
+  // نمودار نسبت آنی
+  const [nesbatAni,setNesbatAni] = useState([])
+  const fetchGetAllNesbatAni = async ()=>{
+    if (!selectedCompany || !endDate) return;
+    try {
+      const start = startDate || endDate.subtract(1, 'month');
+      const { data } = await axios.get(
+        `http://192.168.42.20:2093/Project/2Instantaneousratio?start_date=${start.format("YYYYMMDD")}&end_date=${endDate.format("YYYYMMDD")}&company_name=${selectedCompany}`
+      );
+      setNesbatAni(data);
+    } catch (err) {
+      console.error('Error fetching nesbat jari:', err);
+    }
+  }
+  // نمودار نسبت بدهی به دارایی
+  const [nesbatBedehiBeDarai,setNesbatAniBeDarai] = useState([])
+  const fetchGetAllNesbatBedehiBeDarai = async ()=>
+  {
+    if (!selectedCompany || !endDate) return;
+    try {
+      const start = startDate || endDate.subtract(1, 'month');
+      const { data } = await axios.get(
+        `http://192.168.42.20:2093/Project/3DebttoAssetRatio?start_date=${start.format("YYYYMMDD")}&end_date=${endDate.format("YYYYMMDD")}&company_name=${selectedCompany}`
+      );
+      setNesbatAniBeDarai(data);
+    } catch (err) {
+      console.error('Error fetching nesbat jari:', err);
+    }
+  }
+
+  // نسبت بدهی به حقوق صاحبان سهام
+  const [nesbatBedehiBeHoghogh,setNesbatBedehiBeHoghogh] = useState([])
+  const fetchGetAllNesbatBedehiBeHoghogh = async ()=>{
+    if (!selectedCompany || !endDate) return;
+    try {
+      const start = startDate || endDate.subtract(1, 'month');
+      const { data } = await axios.get(
+        `http://192.168.42.20:2093/Project/4DebtToEquityRatio?start_date=${start.format("YYYYMMDD")}&end_date=${endDate.format("YYYYMMDD")}&company_name=${selectedCompany}`
+      );
+      setNesbatBedehiBeHoghogh(data);
+    } catch (err) {
+      console.error('Error fetching nesbat jari:', err);
+    }
+  }
+
+  // سرمایه در گردش
+  const [sarmayeGardesh,setSarmayeGardesh] = useState([])
+  const fetchGetAllSarmayeDarGardesh = async ()=>{
+    if (!selectedCompany || !endDate) return;
+    try {
+      const start = startDate || endDate.subtract(1, 'month');
+      const { data } = await axios.get(
+        `http://192.168.42.20:2093/Project/5WorkingCapital?start_date=${start.format("YYYYMMDD")}&end_date=${endDate.format("YYYYMMDD")}&company_name=${selectedCompany}`
+      );
+      setSarmayeGardesh(data);
+    } catch (err) {
+      console.error('Error fetching nesbat jari:', err);
+    }
+  }
+
+  // بازده حقوق صاحبان سهام
+  const [bazdeHoghogh,setBazdeHoghogh] = useState([])
+  const fetchGetAllBazdeHoghogh = async ()=>{
+    if (!selectedCompany || !endDate) return;
+    try {
+      const start = startDate || endDate.subtract(1, 'month');
+      const { data } = await axios.get(
+        `http://192.168.42.20:2093/Project/6ReturnOnEquity?start_date=${start.format("YYYYMMDD")}&end_date=${endDate.format("YYYYMMDD")}&company_name=${selectedCompany}`
+      );
+      setBazdeHoghogh(data);
+    } catch (err) {
+      console.error('Error fetching nesbat jari:', err);
+    }
+  }
+
+  // چت بات
+  // چت‌بات state و تابع‌ها
+  const [chatInput, setChatInput] = useState('');
+  const [chatMessages, setChatMessages] = useState([
+    { sender: 'bot', text: "سلام" },
+  ]);
+  // چت بات
+  const [getAllDataForChatBot,setGetAllDataForChatBot] = useState([])
+  const fetchGetAllDataForChatBot = async ()=>{
+    if (!selectedCompany || !endDate) return;
+    try {
+      const start = startDate || endDate.subtract(1, 'month');
+      const { data } = await axios.get(
+        `http://192.168.189.81:9000/analyze?start_date=${start.format("YYYYMMDD")}&end_date=${endDate.format("YYYYMMDD")}&company_name=${selectedCompany}&user_question=${setChatInput}`
+      );
+      setGetAllDataForChatBot(data);
+    } catch (err) {
+      console.error('Error fetching nesbat jari:', err);
+    }
+  }
+
+  const handleSendMessage = async () => {
+    // if (!chatInput.trim()) return;
+  
+    // const userMessage = { sender: 'user', text: chatInput };
+    // setChatMessages((prev) => [...prev, userMessage]);
+  
+    // try {
+    //   const start = startDate || endDate.subtract(1, 'month');
+    //   const { data } = await axios.get(
+    //     `http://192.168.189.81:9000/analyze?start_date=${start.format("YYYYMMDD")}&end_date=${endDate.format("YYYYMMDD")}&company_name=${selectedCompany}&user_question=${chatInput}`
+    //   );
+    //   console.log(data);
+      
+    //   // فرض: data شامل پاسخ متنی است
+    //   const botResponse = { sender: 'bot', text: data || 'پاسخی دریافت نشد.' };
+    //   setChatMessages((prev) => [...prev, botResponse]);
+    // } catch (err) {
+    //   console.error('خطا در دریافت پاسخ از چت‌بات:', err);
+    //   setChatMessages((prev) => [
+    //     ...prev,
+    //     { sender: 'bot', text: 'مشکلی در دریافت پاسخ به وجود آمد.' },
+    //   ]);
+    // }
+    
+    // setChatInput('');
+  };
+  
+const generateBotResponse = (msg) => {
+  if (msg.includes('نسبت جاری')) return 'نسبت جاری برابر است با دارایی جاری تقسیم بر بدهی جاری.';
+  if (msg.includes('سلام')) return 'سلام! خوش اومدی 🌟';
+  return 'متوجه نشدم. لطفاً سوالت رو واضح‌تر بپرس.';
+};
+
+  const renderRows = () => {
+    const allCategories = taraznameData[0]?.categories || [];
+    return allCategories.map((cat1, i) => (
+      <React.Fragment key={i}>
+        <tr className="bg-white">
+          <td className="font-bold border py-0 !text-[12px]">
+            <IconButton size="small" onClick={() => toggleCategory1(cat1.statement_Category1)}>
+              {openCategory1[cat1.statement_Category1] ? <KeyboardArrowDown /> : <KeyboardArrowUp />}
+            </IconButton>
+            {cat1.statement_Category1}
+          </td>
+          {allYears.map((year) => {
+            const y = taraznameData.find((d) => d.jyear === year);
+            const cat = y?.categories.find(
+              (c) => c.statement_Category1 === cat1.statement_Category1
+            );
+            return (
+              <td key={year} className="text-center border p-1 bg-gray-300 !text-[12px]">
+                {cat?.total?.toLocaleString() || ''}
+              </td>
+            );
+          })}
+        </tr>
+
+        {openCategory1[cat1.statement_Category1] &&
+          cat1.subCategories.map((cat2, j) => {
+            const collapseKey = `${cat1.statement_Category1}-${cat2.statement_Category2}`;
+
+            const allItemTitles = Array.from(
+              new Set(
+                taraznameData.flatMap((yearData) =>
+                  yearData.categories
+                    .find((c1) => c1.statement_Category1 === cat1.statement_Category1)?.subCategories
+                    .find((c2) => c2.statement_Category2 === cat2.statement_Category2)?.items.map((it) => it.statement_Title) || []
+                )
+              )
+            );
+
+            return (
+              <React.Fragment key={j}>
+                <tr className='bg-white'>
+                  <td className="pl-5 border py-0 pr-5 !text-[12px]">
+                    <IconButton size="small" onClick={() => toggleCategory2(collapseKey)}>
+                      {openCategory2[collapseKey] ? <KeyboardArrowDown /> : <KeyboardArrowUp />}
+                    </IconButton>
+                    {cat2.statement_Category2}
+                  </td>
+                  {allYears.map((year) => {
+                    const y = taraznameData.find((d) => d.jyear === year);
+                    const cat = y?.categories.find(
+                      (c) => c.statement_Category1 === cat1.statement_Category1
+                    );
+                    const sub = cat?.subCategories.find(
+                      (s) => s.statement_Category2 === cat2.statement_Category2
+                    );
+                    return (
+                      <td key={year} className="text-center border py-1 !text-[12px]">
+                        {sub?.total?.toLocaleString() || ''}
+                      </td>
+                    );
+                  })}
+                </tr>
+
+                {openCategory2[collapseKey] &&
+                  allItemTitles.map((title, k) => (
+                    <tr key={k} className='bg-white'>
+                      <td className="pl-10 border p-3 pr-16 text-xs">
+                        <span className="ml-2"></span> {title}
+                      </td>
+                      {allYears.map((year) => (
+                        <td key={year} className="text-center border py-0 text-xs">
+                          {getCellValue(cat1.statement_Category1, cat2.statement_Category2, title, year)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+              </React.Fragment>
+            );
+          })}
+      </React.Fragment>
+    ));
+  };
+
+  useEffect(() => {
+    if (selectedHolding && endDate) {
+      fetchTaraznameData();
+      
+      // Only fetch chart data when a specific company is selected
+      if (selectedCompany) {
+        // نمودار ها
+        fetchGetAllNesbatJari();
+        fetchGetAllNesbatAni();
+        fetchGetAllNesbatBedehiBeDarai();
+        fetchGetAllNesbatBedehiBeHoghogh();
+        fetchGetAllSarmayeDarGardesh();
+        fetchGetAllBazdeHoghogh();
+        fetchGetAllDataForChatBot();
+      }
+    }
+  }, [selectedHolding, startDate, endDate, selectedCompany]);
+
+  useEffect(() => {
+    if (taraznameData.length > 0) {
+      const category1Open = {};
+      const category2Open = {};
+  
+      taraznameData[0]?.categories.forEach(cat1 => {
+        category1Open[cat1.statement_Category1] = true;
+  
+        cat1.subCategories?.forEach(cat2 => {
+          const key = `${cat1.statement_Category1}-${cat2.statement_Category2}`;
+          category2Open[key] = true;
+        });
+      });
+  
+      setOpenCategory1(category1Open);
+      setOpenCategory2(category2Open);
+    }
+  }, [taraznameData]);
+  
+
+  return (
+    <div>
+      <DateRangePicker title="ترازنامه" />
+      <HoldingsNavbar />
+
+      <div className="w-full px-5 md:my-2 2xl:my-4 text-xs">
+        <div className="flex flex-wrap justify-center gap-3 mx-auto">
+          <div 
+            className={`cursor-pointer p-2 rounded shadow md:text-[10px] 2xl:text-[11px] rounded-full flex-shrink-0 ${
+              !selectedCompany ? 'bg-black text-white' : 'bg-white text-black hover:bg-gray-200'
+            }`}
+            onClick={() => setSelectedCompany('')}
+            onMouseEnter={handleHoldingHover}
+            onMouseLeave={handleHoldingLeave}
+          >
+            {selectedHolding} (همه)
+          </div>
+          {currentHoldingData?.subItems?.map((company, idx) => (
+            <div
+              key={idx}
+              onClick={() => handleCompanyClick(company.Company_name)}
+              className={`cursor-pointer p-2 rounded shadow md:text-[10px] 2xl:text-[11px] rounded-full flex-shrink-0 ${
+                selectedCompany === company.Company_name 
+                  ? 'bg-black text-white' 
+                  : 'bg-white text-black hover:bg-gray-200'
+              }`}
+            >
+              {company.Company_name}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* شروع محتوا */}
+      <div className='flex md:flex-col xl:container mx-auto'>
+        {/* Chatbot Section */}
+        <div className='flex flex-row w-full px-0 md:px-5 2xl:pl-2 mx-auto gap-2'>
+        <div className="md:h-[35vh] 2xl:h-[48vh] md:w-5/12 flex flex-col">
+          {/* Header */}
+          <div className="bg-[#000] text-white text-center py-2 md:text-xs 2xl:text-sm">
+            چت‌بات مالی
+          </div>
+
+          {/* Scrollable message area */}
+          <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50 text-sm" id="chat-box">
+            {chatMessages.map((msg, idx) => (
+              <div
+                key={idx}
+                className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
+              >
+                <div
+                  className={`px-3 py-2 rounded-lg ${
+                    msg.sender === 'user'
+                      ? 'bg-[#0087FF] text-white'
+                      : 'bg-gray-200 text-black'
+                  }`}
+                >
+                  {msg.text}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Input */}
+          <div className="flex items-center border-t border-gray-300 bg-white p-2">
+            <input
+              type="text"
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+              placeholder="پیامت را بنویس..."
+              className="flex-1 p-2 border md:text-xs 2xl:text-sm"
+            />
+            <button
+              onClick={handleSendMessage}
+              className="ml-2 bg-[#000] text-white px-4 py-2 md:text-xs 2xl:text-sm"
+            >
+              ارسال
+            </button>
+          </div>
+        </div>
+
+          {taraznameData.length > 0 && (
+            <div className="overflow-x-auto md:w-7/12 md:h-[35vh] 2xl:h-[48vh] overflow-y-auto border rounded">
+              <table className="min-w-full border border-collapse md:text-xs 2xl:text-sm">
+                <thead className="bg-black text-white sticky top-0 z-10">
+                  <tr>
+                    <th className="text-right bg-[#000] text-white p-2 border">عنوان</th>
+                    {allYears.map((year) => (
+                      <th key={year} className="text-center bg-[#000] text-white p-2 border w-2/12">{year}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>{renderRows()}</tbody>
+                <tfoot className='bg-white'>
+                  <tr>
+                    <td className="border p-1 font-bold !text-[12px]">تراز</td>
+                    {allYears.map((year) => {
+                      const yearData = taraznameData.find((entry) => entry.jyear === year);
+                      // Calculate balance based on the new data structure if needed
+                      const balance = yearData ? 
+                        yearData.categories.reduce((sum, cat) => sum + cat.total, 0) : 0;
+                      
+                      return (
+                        <td key={year} className="text-center border">
+                          {balance.toLocaleString() || '0'}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+        </div>
+        {/* جدول */}
+      
+      {/* نمودارها */}
+      {selectedCompany && (
+        <div className='flex mx-auto gap-2 mt-2'>
+          {/* سطر اول نمودار */}
+          <div className='flex gap-2'>
+            {nesbatJari.length > 0 && (
+              <div className="md:w-[200px] 2xl:w-[243px] rounded-xl bg-white p-3">
+                <ReactEcharts
+                  option={{
+                    grid: {
+                      left: '10%',
+                      right: '10%',
+                      top: 50,
+                      bottom: 25,
+                    },
+                    title: {
+                      text: 'نسبت جاری',
+                      left: 'center',
+                      top: 0,
+                      textStyle: {
+                        fontSize: 14,
+                        fontWeight: 'bold',
+                        color:"#000"
+                      },
+                    },
+                    tooltip: {
+                      trigger: 'axis',
+                      formatter: (params) => {
+                        const data = params[0];
+                        return `سال: ${data.name}<br/>نسبت جاری: ${data.value}`;
+                      },
+                    },
+                    xAxis: {
+                      type: 'category',
+                      data: nesbatJari.map((item) => item.jyear),
+                      axisLine: {
+                        lineStyle: { color: '#aaa' },
+                      },
+                      axisLabel: {
+                        fontSize: 12,
+                      },
+                    },
+                    yAxis: {
+                      type: 'value',
+                      axisLine: { show: false },
+                      axisTick: { show: false },
+                      splitLine: {
+                        lineStyle: {
+                          color: '#eee',
+                          type: 'dashed',
+                        },
+                      },
+                    },
+                    extend: {
+                      fontFamily: {
+                        iran: ['IRANSans']
+                      }
+                    },              
+                    series: [
+                      {
+                        name: 'نسبت جاری',
+                        data: nesbatJari.map((item) => item.amount),
+                        type: 'line',
+                        smooth: true,
+                        symbol: 'circle',
+                        symbolSize: 10,
+                        lineStyle: {
+                          color: '#007bff',
+                          width: 2,
+                        },
+                        itemStyle: {
+                          color: '#007bff',
+                          borderColor: '#fff',
+                          borderWidth: 2,
+                        },
+                        label: {
+                          show: true,
+                          position: 'top',
+                          fontSize: 10,
+                          formatter: '{c}',
+                        },
+                        areaStyle: {
+                          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                            { offset: 0, color: 'rgba(0, 123, 255, 0.4)' },
+                            { offset: 1, color: 'rgba(0, 123, 255, 0.05)' },
+                          ]),
+                        },
+                      },
+                    ]
+                    
+                  }}
+                  style={{ height: '200px', width: '100%' }}
+                />
+              </div>
+            )}
+            {nesbatAni.length > 0 && (
+              <div className="md:w-[200px] 2xl:w-[243px] rounded-xl bg-white p-3">
+                <ReactEcharts
+                  option={{
+                    grid: {
+                      left: '10%',
+                      right: '10%',
+                      top: 50,
+                      bottom: 25,
+                    },
+                    title: {
+                      text: 'نسبت آنی',
+                      left: 'center',
+                      top: 0,
+                      textStyle: {
+                        fontSize: 14,
+                        fontWeight: 'bold',
+                        color:"#000"
+                      },
+                    },
+                    tooltip: {
+                      trigger: 'axis',
+                      formatter: (params) => {
+                        const data = params[0];
+                        return `سال: ${data.name}<br/>نسبت آنی: ${data.value}`;
+                      },
+                    },
+                    xAxis: {
+                      type: 'category',
+                      data: nesbatAni.map((item) => item.jyear),
+                      axisLine: {
+                        lineStyle: { color: '#aaa' },
+                      },
+                      axisLabel: {
+                        fontSize: 12,
+                      },
+                    },
+                    yAxis: {
+                      type: 'value',
+                      axisLine: { show: false },
+                      axisTick: { show: false },
+                      splitLine: {
+                        lineStyle: {
+                          color: '#eee',
+                          type: 'dashed',
+                        },
+                      },
+                    },
+                    series: [
+                      {
+                        name: 'نسبت آنی',
+                        data: nesbatAni.map((item) => item.amount),
+                        type: 'line',
+                        smooth: true,
+                        symbol: 'circle',
+                        symbolSize: 10,
+                        lineStyle: {
+                          color: '#007bff',
+                          width: 2,
+                        },
+                        itemStyle: {
+                          color: '#007bff',
+                          borderColor: '#fff',
+                          borderWidth: 2,
+                        },
+                        label: {
+                          show: true,
+                          position: 'top',
+                          fontSize: 10,
+                          formatter: '{c}',
+                        },
+                        areaStyle: {
+                          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                            { offset: 0, color: 'rgba(0, 123, 255, 0.4)' },
+                            { offset: 1, color: 'rgba(0, 123, 255, 0.05)' },
+                          ]),
+                        },
+                      },
+                    ]
+                    
+                  }}
+                  style={{ height: '200px', width: '100%' }}
+                />
+              </div>
+            )}
+            {nesbatBedehiBeDarai.length > 0 && (
+              <div className="md:w-[200px] 2xl:w-[243px] rounded-xl bg-white p-3">
+                <ReactEcharts
+                  option={{
+                    grid: {
+                      left: '10%',
+                      right: '10%',
+                      top: 50,
+                      bottom: 25,
+                    },
+                    title: {
+                      text: 'نسبت بدهی به دارایی',
+                      left: 'center',
+                      top: 0,
+                      textStyle: {
+                        fontSize: 14,
+                        fontWeight: 'bold',
+                        color:"#000"
+                      },
+                    },
+                    tooltip: {
+                      trigger: 'axis',
+                      formatter: (params) => {
+                        const data = params[0];
+                        return `سال: ${data.name}<br/>نسبت بدهی به دارایی: ${data.value}`;
+                      },
+                    },
+                    xAxis: {
+                      type: 'category',
+                      data: nesbatBedehiBeDarai.map((item) => item.jyear),
+                      axisLine: {
+                        lineStyle: { color: '#aaa' },
+                      },
+                      axisLabel: {
+                        fontSize: 12,
+                      },
+                    },
+                    yAxis: {
+                      type: 'value',
+                      axisLine: { show: false },
+                      axisTick: { show: false },
+                      splitLine: {
+                        lineStyle: {
+                          color: '#eee',
+                          type: 'dashed',
+                        },
+                      },
+                    },
+                    series: [
+                      {
+                        name: 'نسبت بدهی به دارایی',
+                        data: nesbatBedehiBeDarai.map((item) => item.amount),
+                        type: 'line',
+                        smooth: true,
+                        symbol: 'circle',
+                        symbolSize: 10,
+                        lineStyle: {
+                          color: '#007bff',
+                          width: 2,
+                        },
+                        itemStyle: {
+                          color: '#007bff',
+                          borderColor: '#fff',
+                          borderWidth: 2,
+                        },
+                        label: {
+                          show: true,
+                          position: 'top',
+                          fontSize: 10,
+                          formatter: '{c}',
+                        },
+                        areaStyle: {
+                          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                            { offset: 0, color: 'rgba(0, 123, 255, 0.4)' },
+                            { offset: 1, color: 'rgba(0, 123, 255, 0.05)' },
+                          ]),
+                        },
+                      },
+                    ]
+                    
+                  }}
+                  style={{ height: '200px', width: '100%' }}
+                />
+              </div>
+            )}
+          </div>
+          {/* سطر دوم نمودار */}
+          <div className='flex gap-2'>
+            {nesbatBedehiBeHoghogh.length > 0 && (
+              <div className="md:w-[200px] 2xl:w-[243px] rounded-xl bg-white p-3">
+                <ReactEcharts
+                  option={{
+                    grid: {
+                      left: '10%',
+                      right: '10%',
+                      top: 50,
+                      bottom: 25,
+                    },
+                    title: {
+                      text: 'نسبت بدهی به حقوق صاحبان سهام',
+                      left: 'center',
+                      top: 0,
+                      textStyle: {
+                        fontSize: 14,
+                        fontWeight: 'bold',
+                        color:"#000"
+                      },
+                    },
+                    tooltip: {
+                      trigger: 'axis',
+                      formatter: (params) => {
+                        const data = params[0];
+                        return `سال: ${data.name}<br/>نسبت بدهی به حقوق صاحبان سهام: ${data.value}`;
+                      },
+                    },
+                    xAxis: {
+                      type: 'category',
+                      data: nesbatBedehiBeHoghogh.map((item) => item.jyear),
+                      axisLine: {
+                        lineStyle: { color: '#aaa' },
+                      },
+                      axisLabel: {
+                        fontSize: 12,
+                      },
+                    },
+                    yAxis: {
+                      type: 'value',
+                      axisLine: { show: false },
+                      axisTick: { show: false },
+                      splitLine: {
+                        lineStyle: {
+                          color: '#eee',
+                          type: 'dashed',
+                        },
+                      },
+                    },
+                    series: [
+                      {
+                        name: 'نسبت بدهی به حقوق صاحبان سهام',
+                        data: nesbatBedehiBeHoghogh.map((item) => item.amount),
+                        type: 'line',
+                        smooth: true,
+                        symbol: 'circle',
+                        symbolSize: 10,
+                        lineStyle: {
+                          color: '#007bff',
+                          width: 2,
+                        },
+                        itemStyle: {
+                          color: '#007bff',
+                          borderColor: '#fff',
+                          borderWidth: 2,
+                        },
+                        label: {
+                          show: true,
+                          position: 'top',
+                          fontSize: 10,
+                          formatter: '{c}',
+                        },
+                        areaStyle: {
+                          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                            { offset: 0, color: 'rgba(0, 123, 255, 0.4)' },
+                            { offset: 1, color: 'rgba(0, 123, 255, 0.05)' },
+                          ]),
+                        },
+                      },
+                    ]
+                    
+                  }}
+                  style={{ height: '200px', width: '100%' }}
+                />
+              </div>
+            )}
+            {sarmayeGardesh.length > 0 && (
+              <div className="md:w-[200px] 2xl:w-[243px] rounded-xl bg-white p-3">
+                <ReactEcharts
+                  option={{
+                    grid: {
+                      left: '10%',
+                      right: '10%',
+                      top: 50,
+                      bottom: 25,
+                    },
+                    title: {
+                      text: 'ُسرمایه در گردش',
+                      left: 'center',
+                      top: 0,
+                      textStyle: {
+                        fontSize: 14,
+                        fontWeight: 'bold',
+                        color:"#000"
+                      },
+                    },
+                    tooltip: {
+                      trigger: 'axis',
+                      formatter: (params) => {
+                        const data = params[0];
+                        return `سال: ${data.name}<br/>سرمایه در گردش: ${data.value}`;
+                      },
+                    },
+                    xAxis: {
+                      type: 'category',
+                      data: sarmayeGardesh.map((item) => item.jyear),
+                      axisLine: {
+                        lineStyle: { color: '#aaa' },
+                      },
+                      axisLabel: {
+                        fontSize: 12,
+                      },
+                    },
+                    yAxis: {
+                      type: 'value',
+                      axisLine: { show: false },
+                      axisTick: { show: false },
+                      splitLine: {
+                        lineStyle: {
+                          color: '#eee',
+                          type: 'dashed',
+                        },
+                      },
+                    },
+                    series: [
+                      {
+                        name: 'ُسرمایه در گردش',
+                        data: sarmayeGardesh.map((item) => item.amount),
+                        type: 'line',
+                        smooth: true,
+                        symbol: 'circle',
+                        symbolSize: 10,
+                        lineStyle: {
+                          color: '#007bff',
+                          width: 2,
+                        },
+                        itemStyle: {
+                          color: '#007bff',
+                          borderColor: '#fff',
+                          borderWidth: 2,
+                        },
+                        label: {
+                          show: true,
+                          position: 'top',
+                          fontSize: 10,
+                          formatter: '{c}',
+                        },
+                        areaStyle: {
+                          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                            { offset: 0, color: 'rgba(0, 123, 255, 0.4)' },
+                            { offset: 1, color: 'rgba(0, 123, 255, 0.05)' },
+                          ]),
+                        },
+                      },
+                    ]
+                    
+                  }}
+                  style={{ height: '200px', width: '100%' }}
+                />
+              </div>
+            )}
+            {bazdeHoghogh.length > 0 && (
+              <div className="md:w-[200px] 2xl:w-[243px] rounded-xl bg-white p-3">
+                <ReactEcharts
+                  option={{
+                    grid: {
+                      left: '10%',
+                      right: '10%',
+                      top: 50,
+                      bottom: 25,
+                    },
+                    title: {
+                      text: 'بازده حقوق صاحبان سهام',
+                      left: 'center',
+                      top: 0,
+                      textStyle: {
+                        fontSize: 14,
+                        fontWeight: 'bold',
+                        color:"#000"
+                      },
+                    },
+                    tooltip: {
+                      trigger: 'axis',
+                      formatter: (params) => {
+                        const data = params[0];
+                        return `سال: ${data.name}<br/>بازده حقوق صاحبان سهام: ${data.value}`;
+                      },
+                    },
+                    xAxis: {
+                      type: 'category',
+                      data: bazdeHoghogh.map((item) => item.jyear),
+                      axisLine: {
+                        lineStyle: { color: '#aaa' },
+                      },
+                      axisLabel: {
+                        fontSize: 12,
+                      },
+                    },
+                    yAxis: {
+                      type: 'value',
+                      axisLine: { show: false },
+                      axisTick: { show: false },
+                      splitLine: {
+                        lineStyle: {
+                          color: '#eee',
+                          type: 'dashed',
+                        },
+                      },
+                    },
+                    series: [
+                      {
+                        name: 'بازده حقوق صاحبان سهام',
+                        data: bazdeHoghogh.map((item) => item.amount),
+                        type: 'line',
+                        smooth: true,
+                        symbol: 'circle',
+                        symbolSize: 10,
+                        lineStyle: {
+                          color: '#007bff',
+                          width: 2,
+                        },
+                        itemStyle: {
+                          color: '#007bff',
+                          borderColor: '#fff',
+                          borderWidth: 2,
+                        },
+                        label: {
+                          show: true,
+                          position: 'top',
+                          fontSize: 10,
+                          formatter: '{c}',
+                        },
+                        areaStyle: {
+                          color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                            { offset: 0, color: 'rgba(0, 123, 255, 0.4)' },
+                            { offset: 1, color: 'rgba(0, 123, 255, 0.05)' },
+                          ]),
+                        },
+                      },
+                    ]
+                    
+                  }}
+                  style={{ height: '200px', width: '100%' }}
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      {/* پایان نمودارها */}
+      </div>
+    </div>
+  );
+};
+
+export default Tarazname;

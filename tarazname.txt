@@ -1,0 +1,467 @@
+import React, { useEffect, useState } from 'react';
+import axios from 'axios';
+import Lottie from 'react-lottie';
+import spinner from '../../assets/Animation.json';
+import HoldingsNavbar from '../../components/HoldingsNavbar';
+import DateRangePicker from '../../components/DateRangePicker';
+import { useHolding } from '../../context/HoldingContext';
+import { 
+  Box, 
+  Table, 
+  TableBody, 
+  TableCell, 
+  TableContainer, 
+  TableHead, 
+  TableRow, 
+  Paper, 
+  Collapse, 
+  IconButton, 
+  Typography,
+  Switch,
+  FormControlLabel,
+  Tooltip,
+  Divider
+} from '@mui/material';
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
+import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
+
+// Mock data for development
+const MOCK_DATA = [
+  {
+    "company_Name": "پلیمر پاک آریان",
+    "jyear": "1404",
+    "categories": [
+      {
+        "statement_Category1": "دارایی ها",
+        "total": 14436477.11563,
+        "subCategories": [
+          {
+            "statement_Category2": "دارایی های غیر جاری",
+            "total": 2524925.3403999996,
+            "items": [
+              {
+                "statement_Title": "دارایی ثابت مشهود",
+                "amount": 2499903.8057699995
+              },
+              {
+                "statement_Title": "دارایی های نامشهود",
+                "amount": 25016.53463
+              },
+              {
+                "statement_Title": "سرمایه گذاری های بلندمدت",
+                "amount": 5
+              }
+            ]
+          },
+          {
+            "statement_Category2": "دارایی های جاری",
+            "total": 11911551.775230002,
+            "items": [
+              {
+                "statement_Title": "پیش پرداخت ها و سپرده ها",
+                "amount": 977100.78854
+              },
+              {
+                "statement_Title": "دریافتنی های تجاری و سایر دریافتنی ها",
+                "amount": 3218134.91646
+              },
+              {
+                "statement_Title": "موجودی مواد و کالا",
+                "amount": 4704783.803590001
+              },
+              {
+                "statement_Title": "موجودی نقد",
+                "amount": 3011532.26664
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "statement_Category1": "بدهی ها",
+        "total": -10846032.65455,
+        "subCategories": [
+          {
+            "statement_Category2": "بدهی های غیر جاری",
+            "total": -1289761.7003,
+            "items": [
+              {
+                "statement_Title": "پرداختنی های بلند مدت",
+                "amount": -1286188.28044
+              },
+              {
+                "statement_Title": "ذخیره مزایای پایان خدمت کارکنان",
+                "amount": -3573.41986
+              }
+            ]
+          },
+          {
+            "statement_Category2": "بدهی های جاری",
+            "total": -9556270.95425,
+            "items": [
+              {
+                "statement_Title": "پرداختنی های تجاری و سایر پرداختنی ها",
+                "amount": -5774167.75192
+              },
+              {
+                "statement_Title": "پیش دریافت ها",
+                "amount": 334698.76972
+              },
+              {
+                "statement_Title": "تسهیلات مالی",
+                "amount": -4082984.09679
+              },
+              {
+                "statement_Title": "ذخایر",
+                "amount": -5425.79688
+              },
+              {
+                "statement_Title": "مالیات پرداختنی",
+                "amount": -28392.07838
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "statement_Category1": "حقوق مالکانه",
+        "total": -3590444.461101,
+        "subCategories": [
+          {
+            "statement_Category2": "حقوق مالکانه",
+            "total": -3590444.461101,
+            "items": [
+              {
+                "statement_Title": "سایر اندوخته ها",
+                "amount": -71232.92762
+              },
+              {
+                "statement_Title": "سرمایه",
+                "amount": -2200000
+              },
+              {
+                "statement_Title": "سود انباشته",
+                "amount": -1319211.5334810002
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+];
+
+// Helper to get bgcolor based on category name
+const getCategoryColor = (categoryName) => {
+  if (categoryName.includes('دارایی')) {
+    return '#e8f5e9'; // Light green for assets
+  } else if (categoryName.includes('بدهی')) {
+    return '#ffebee'; // Light red for liabilities  
+  } else if (categoryName.includes('حقوق')) {
+    return '#e3f2fd'; // Light blue for equity
+  }
+  return '#f5f5f5'; // Default light gray
+};
+
+// Format number with commas and handle negative values
+const formatNumber = (num) => {
+  const isNegative = num < 0;
+  const formatted = new Intl.NumberFormat('fa-IR').format(Math.abs(num));
+  return isNegative ? `(${formatted})` : formatted;
+};
+
+// Row component for the first level (statement_Category1)
+const Row = ({ category, year }) => {
+  const [open, setOpen] = useState(true); // Open by default
+  const bgColor = getCategoryColor(category.statement_Category1);
+  
+  return (
+    <>
+      <TableRow sx={{ 
+        '& > *': { borderBottom: 'unset' }, 
+        backgroundColor: bgColor,
+        '&:hover': { backgroundColor: `${bgColor}99` } // Add opacity for hover effect
+      }}>
+        <TableCell align="right">
+          <IconButton
+            aria-label="expand row"
+            size="small"
+            onClick={() => setOpen(!open)}
+          >
+            {open ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
+          </IconButton>
+        </TableCell>
+        <TableCell component="th" scope="row" align="right" sx={{ fontWeight: 'bold' }}>
+          {category.statement_Category1}
+        </TableCell>
+        <TableCell align="left" sx={{ fontWeight: 'bold' }}>
+          {formatNumber(category.total)}
+        </TableCell>
+      </TableRow>
+      <TableRow>
+        <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={6}>
+          <Collapse in={open} timeout="auto" unmountOnExit>
+            <Box sx={{ margin: 1 }}>
+              {category.subCategories.map((subCategory, index) => (
+                <SubCategoryRow 
+                  key={index} 
+                  subCategory={subCategory} 
+                  year={year} 
+                  isLastItem={index === category.subCategories.length - 1}
+                  parentCategory={category.statement_Category1}
+                />
+              ))}
+            </Box>
+          </Collapse>
+        </TableCell>
+      </TableRow>
+    </>
+  );
+};
+
+// Row component for the second level (statement_Category2)
+const SubCategoryRow = ({ subCategory, year, isLastItem, parentCategory }) => {
+  const [open, setOpen] = useState(false);
+  const bgColor = getCategoryColor(parentCategory);
+  
+  return (
+    <>
+      <TableRow sx={{ 
+        backgroundColor: `${bgColor}80`, // More transparent version of parent color
+        '&:hover': { backgroundColor: `${bgColor}bf` }
+      }}>
+        <TableCell align="right" sx={{ paddingRight: 4 }}>
+          <IconButton
+            aria-label="expand row"
+            size="small"
+            onClick={() => setOpen(!open)}
+          >
+            {open ? <KeyboardArrowUpIcon /> : <KeyboardArrowDownIcon />}
+          </IconButton>
+        </TableCell>
+        <TableCell component="th" scope="row" align="right" sx={{ fontWeight: 'medium' }}>
+          {subCategory.statement_Category2}
+        </TableCell>
+        <TableCell align="left" sx={{ fontWeight: 'medium' }}>
+          {formatNumber(subCategory.total)}
+        </TableCell>
+      </TableRow>
+      <TableRow>
+        <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={6}>
+          <Collapse in={open} timeout="auto" unmountOnExit>
+            <Box sx={{ margin: 1, marginRight: 4 }}>
+              <Table size="small" aria-label="items">
+                <TableBody>
+                  {subCategory.items.map((item, index) => (
+                    <TableRow key={index} sx={{ 
+                      backgroundColor: 'white',
+                      '&:hover': { backgroundColor: '#f5f5f5' }
+                    }}>
+                      <TableCell sx={{ paddingRight: 4, border: 'none' }}></TableCell>
+                      <TableCell component="th" scope="row" align="right" sx={{ border: 'none' }}>
+                        {item.statement_Title}
+                      </TableCell>
+                      <TableCell align="left" sx={{ border: 'none' }}>
+                        {formatNumber(item.amount)}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </Box>
+          </Collapse>
+        </TableCell>
+      </TableRow>
+      {!isLastItem && (
+        <TableRow>
+          <TableCell colSpan={6} sx={{ padding: 0 }}>
+            <Divider sx={{ margin: '0 16px' }} />
+          </TableCell>
+        </TableRow>
+      )}
+    </>
+  );
+};
+
+const Tarazname = () => {
+  const { 
+    selectedHolding, 
+    activeItem, 
+    currentHoldingData, 
+    isCompaniesLoading,
+    startDate,
+    endDate
+  } = useHolding();
+  
+  const [isLoading, setIsLoading] = useState(false);
+  const [taraznameData, setTaraznameData] = useState(null);
+  const [companyName, setCompanyName] = useState('');
+  const [useMockData, setUseMockData] = useState(false);
+
+  const defaultOptions = {
+    loop: true,
+    autoplay: true,
+    animationData: spinner,
+    rendererSettings: {
+      preserveAspectRatio: 'xMidYMid slice'
+    }
+  };
+
+  // Handle toggle for mock data
+  const handleToggleMockData = (event) => {
+    setUseMockData(event.target.checked);
+    // Re-fetch data with the new setting
+    if (selectedHolding && endDate) {
+      fetchTaraznameData(event.target.checked);
+    }
+  };
+
+  // Function to fetch tarazname data for the selected holding
+  const fetchTaraznameData = async (useMock = useMockData) => {
+    if (!selectedHolding || !endDate) return;
+    
+    try {
+      setIsLoading(true);
+      
+      // For development, use mock data if needed
+      if (process.env.NODE_ENV === 'development' && useMock) {
+        setTimeout(() => {
+          setTaraznameData(MOCK_DATA);
+          setCompanyName(MOCK_DATA[0].company_Name);
+          setIsLoading(false);
+        }, 500); // Simulate network delay
+        return;
+      }
+      
+      // Get start date (or use endDate minus one month as default)
+      const start = startDate || endDate.clone().subtract(1, "month");
+      
+      // Format dates for API
+      const startFormatted = start.format("YYYYMMDD");
+      const endFormatted = endDate.format("YYYYMMDD");
+      
+      // Get company name from currentHoldingData
+      const companyNameEncoded = encodeURIComponent(currentHoldingData?.name || selectedHolding);
+      
+      try {
+        // Use API endpoint with SSL verification disabled (for development only)
+        const { data } = await axios.get(
+          `https://192.168.189.52:7120/Project/financial-statement?start_date=${startFormatted}&end_date=${endFormatted}&company_name=${companyNameEncoded}`,
+          { 
+            httpsAgent: new (require('https').Agent)({ rejectUnauthorized: false }),
+            timeout: 5000 // 5 second timeout
+          }
+        );
+        
+        setTaraznameData(data);
+        if (data && data.length > 0) {
+          setCompanyName(data[0].company_Name);
+        }
+      } catch (apiError) {
+        console.log("API error, falling back to mock data:", apiError);
+        // Fall back to mock data if API fails
+        setTaraznameData(MOCK_DATA);
+        setCompanyName(MOCK_DATA[0].company_Name);
+        setUseMockData(true); // Use mock data for future requests
+      }
+    } catch (err) {
+      console.log("Error in fetchTaraznameData:", err);
+      // Fall back to mock data if something fails
+      setTaraznameData(MOCK_DATA);
+      setCompanyName(MOCK_DATA[0].company_Name);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Fetch tarazname data when selectedHolding or dates change
+  useEffect(() => {
+    if (selectedHolding && endDate) {
+      fetchTaraznameData();
+    }
+  }, [selectedHolding, activeItem, startDate, endDate]);
+
+  // Calculate grand total
+  const calculateGrandTotal = () => {
+    if (!taraznameData || !taraznameData.length) return 0;
+    return taraznameData[0].categories.reduce((sum, category) => sum + category.total, 0);
+  };
+
+  return (
+    <>
+      <DateRangePicker title="ترازنامه" />
+      <HoldingsNavbar />
+      <div className="w-full mt-5 relative mx-auto">
+        {/* Development mode toggle for mock data */}
+        {process.env.NODE_ENV === 'development' && (
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 2 }}>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={useMockData}
+                  onChange={handleToggleMockData}
+                  color="primary"
+                />
+              }
+              label="استفاده از داده‌های نمونه"
+            />
+          </Box>
+        )}
+        
+        {isLoading || isCompaniesLoading ? (
+          <div className="flex justify-center items-center h-[200px]">
+            <Lottie options={defaultOptions} height={100} width={100} />
+          </div>
+        ) : selectedHolding ? (
+          <>
+            {taraznameData && taraznameData.length > 0 ? (
+              <Box sx={{ width: '100%' }}>
+                <Paper sx={{ width: '100%', mb: 2, overflow: 'hidden' }}>
+                  <Box sx={{ p: 2, display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', borderBottom: '1px solid #e0e0e0' }}>
+                    <Typography variant="h6" component="div">
+                      ترازنامه شرکت {companyName}
+                    </Typography>
+                    <Box>
+                      <Typography variant="h6" component="div">
+                        سال مالی: {taraznameData[0].jyear}
+                      </Typography>
+                      <Typography variant="subtitle1" component="div" align="left">
+                        مجموع: {formatNumber(calculateGrandTotal())}
+                      </Typography>
+                    </Box>
+                  </Box>
+                  <TableContainer sx={{ maxHeight: 'calc(100vh - 250px)', direction: 'rtl' }}>
+                    <Table stickyHeader aria-label="collapsible table">
+                      <TableHead>
+                        <TableRow sx={{ backgroundColor: '#f5f5f5' }}>
+                          <TableCell width="50px" align="right" />
+                          <TableCell align="right">عنوان</TableCell>
+                          <TableCell align="left">مبلغ</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {taraznameData[0].categories.map((category, index) => (
+                          <Row key={index} category={category} year={taraznameData[0].jyear} />
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Paper>
+              </Box>
+            ) : (
+              <Paper sx={{ p: 3, textAlign: 'center' }}>
+                <Typography>اطلاعاتی برای نمایش وجود ندارد</Typography>
+              </Paper>
+            )}
+          </>
+        ) : (
+          <Paper sx={{ p: 3, textAlign: 'center', bgcolor: '#f3f3f3', borderRadius: '20px' }}>
+            <Typography>لطفاً یک هلدینگ را انتخاب کنید</Typography>
+          </Paper>
+        )}
+      </div>
+    </>
+  );
+};
+
+export default Tarazname;

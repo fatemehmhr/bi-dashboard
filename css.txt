@@ -1,0 +1,408 @@
+{activeItem === item.id && (
+            <div className="w-full absolute mt-10 right-0 left-0">
+              <div className="grid grid-cols-12 gap-2 text-xs">
+                {item.subItems.map((sub, index) => (
+                  <motion.div
+                    key={index}
+                    className="col-span-12 flex items-start"
+                    initial={{ opacity: 0, x: 100 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ 
+                      duration: 0.2,    
+                      delay: index * 0.1 
+                    }}
+                  >
+                    {/* ستون رتبه */}
+                    <div className="w-1/12 flex flex-col items-center space-y-2">
+                      <div className="bg-[#f3f3f3] text-black px-4 py-3 rounded-full shadow">
+                        {index + 1}
+                      </div>
+                    </div>
+                    {/* محتوای خطی */}
+                    <div className="w-11/12 space-y-1 ">
+                      <div className="grid grid-cols-5 bg-[#f3f3f3] py-3 text-black rounded shadow p-2 text-center">
+                        <div>{sub}</div>
+                        <div>20,338,224</div>
+                        <div>1.09%</div>
+                        <div>19,307,652</div>
+                        <div className="font-bold">13</div>
+                      </div>
+                    </div>
+                  </motion.div>
+                ))}
+              </div>
+            </div>
+          )}
+
+
+
+
+
+  :root {
+    --space: 1rem;
+    --bg: #09090b;
+    --fg: #e3e3e3;
+    --surface-1: #101012;
+    --surface-2: #3d3d42;
+    --surface-3: #52525b;
+    --ease-out: cubic-bezier(0.5, 1, 0.89, 1);
+    --ease-in-out: cubic-bezier(0.45, 0, 0.55, 1);
+  }
+  
+  body {
+      padding: 0;
+      box-sizing: border-box;
+      font-family: Arial, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background-color: #141414;
+      background-size: 5%; /* تنظیم اندازه گرادیان */
+      background-repeat: repeat;
+      overflow: hidden;
+      color: #fff !important;
+      font-family: 'IRANSans'; /* استفاده از فونت */
+  }
+  
+  .horizontalLine
+  {
+      width: 100vw;
+      height: 2px;
+      background-color: #808080;
+      opacity: 30%;
+      position: fixed;
+      top: 90px;
+      left: 0;
+  }
+  
+  .verticalLine1
+  {
+      width: 2px;
+      height: 100vh;
+      background-color: #808080;
+      opacity: 30%;
+      position: fixed;
+      top: 0;
+      left: 120px;
+  }
+  
+  .verticalLine2
+  {
+      width: 2px;
+      height: 100vh;
+      background-color: #808080;
+      opacity: 30%;
+      position: fixed;
+      top: 0;
+      right: 120px;
+  }
+  
+  .leftDiamond
+  {
+      width: 10PX;
+      height: 10PX;
+      background-color: #808080; 
+      transform: rotate(45deg);
+      position: fixed;
+      top:86px;
+      left:116px
+  }
+  
+  .rightDiamond
+  {
+      width: 10PX;
+      height: 10PX;
+      background-color: #808080; 
+      transform: rotate(45deg);
+      position: fixed;
+      top:86px;
+      right:116px
+  }
+  
+  .left-quarter-border {
+      width: 200px; /* عرض دایره کامل */
+    height: 200px; /* ارتفاع دایره کامل */
+    border: 2px solid #808080; /* ضخامت حاشیه */
+    border-radius: 50%; /* تبدیل به دایره */
+    opacity: 30%;
+    clip-path: polygon(0 0, 50% 0, 0 50%); /* نمایش فقط یک‌چهارم */
+    background: none; /* بدون رنگ داخلی */
+    position: fixed;
+    top: 61px;
+    left: 121px;
+  }
+  
+  .right-quarter-border {
+      width: 200px; /* عرض دایره کامل */
+      height: 200px; /* ارتفاع دایره کامل */
+      border: 2px solid #808080; /* ضخامت حاشیه */
+      border-radius: 50%; /* تبدیل به دایره */
+      opacity: 30%; /* شفافیت */
+      clip-path: polygon(0 0, 100% 0, 100% 50%, 50% 0%); /* نمایش نیم‌دایره سمت راست */
+      background: none; /* بدون رنگ داخلی */
+      position: fixed;
+      top: 61px;
+      right: 121px;
+  }
+    
+  .sunshineRays
+  {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+  }
+  
+  .intro {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    background: #141414;
+    position: fixed;
+    width: 100%;
+    z-index: 100;
+    transition: all 1s ease-in-out;
+  }
+  
+  .intro.minimized {
+    height: auto;
+    width: auto;
+    background: transparent;
+  }
+  
+  .makanLinkText {
+    width: 700px; /* اندازه اولیه بزرگ */
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%); /* مرکز صفحه */
+    transition: all 1s ease-in-out;
+  }
+  
+  .tabiatMakan
+  {
+    position: fixed;
+    top: 15px;
+    right: 140px;
+    width: 65px;
+    
+  }
+  
+  .move-to-top-left {
+    width: 150px !important; /* اندازه نهایی کوچک */
+    position: fixed !important;
+    top: 25px !important;
+    left: 140px;
+    transform: translate(0, 0) !important; /* حذف translate اولیه */
+    z-index: 1000;
+  }
+  
+  .mainContent {
+    display: none;
+    opacity: 0;
+    transition: opacity 1s ease-in-out;
+    position: relative;
+    /* z-index: 10; */
+  }
+  
+  @keyframes fadeInOut {
+      0% {
+          opacity: 0; /* شروع کاملاً محو */
+      }
+      50% {
+          opacity: 1; /* اوج نمایش */ 
+      }
+  }
+  
+  /* Hide radio buttons */
+  input[type="radio"] {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border-width: 0;
+  }
+  
+  main {
+    display: grid;
+    grid-template-columns: repeat(var(--count, 1), 1fr);
+    gap: var(--space);
+    inline-size: min(var(--max, 10rem), 100%); /* کاهش اندازه کارت‌ها */
+    position: relative;
+    /* top: -100px; */
+    margin: 0 auto;
+    justify-items: center; /* وسط‌چین کردن افقی کارت‌ها */
+    align-items: center; /* وسط‌چین کردن عمودی کارت‌ها */
+  
+    @media (min-width: 25rem) {
+        --count: 3;
+        --max: 20rem; /* تنظیم عرض کارت‌ها در صفحه‌های کوچکتر */
+    }
+  
+    @media (min-width: 45rem) {
+        --count: 4;
+        --max: 40rem; /* تنظیم عرض کارت‌ها در صفحه‌های بزرگتر */
+    }
+  
+    @media (min-width: 75rem) {
+        --count: 6;
+        --max: 90rem; /* تنظیم عرض کارت‌ها در صفحه‌های بزرگ */
+    }
+  }
+  
+  .logo
+  {
+    transition: filter 0.3s ease;
+    transform: scale(1);
+    transition: 0.1s ease-in-out;
+    object-fit: contain;
+    text-align: center;
+    align-items: center;
+    justify-content: center;
+    justify-content: center;
+    width: 100px;
+    margin: auto;
+    opacity: 1;
+  }
+  
+  .infoWrapper
+  {
+    display: flex;
+    position: absolute;
+    bottom: 0 ;
+    align-items: center;
+    justify-content: space-evenly;
+    width: 100%;
+    opacity: 0;
+    transition: opacity 0.2s ease-in-out;
+    padding: 0 10px ;
+  }
+  
+  .imgText {
+    background-color: #ffffffbe;
+    color: #fff;
+    padding: 5px 16px;
+    font-size: 13.5px;
+    text-align: center;
+    width: 100%;
+    z-index: 2;
+    opacity: 0;
+    transform: translateY(20px); /* شروع از پایین */
+    transition: opacity 0.4s ease-out, transform 0.4s ease-out;
+  }
+  
+  .card:hover .imgText {
+    opacity: 1;
+    transform: translateY(0); /* حرکت به بالا و نمایش */
+  }
+  
+  .card {
+    position: relative;
+    overflow: hidden;
+    grid-template-areas: "card";
+    place-items: center;
+    aspect-ratio: 5/5;
+    border: 1px solid var(--surface-2);
+    isolation: isolate;
+    transition: border-color 200ms var(--ease-out);
+    user-select: none;
+    width: 145px;
+    height: 145px;
+    max-width: var(--max);
+    margin-top: auto;
+    padding: 20px 0;
+  }
+  /* موقعیت‌دهی مثلث */
+
+  .arrow {
+    background-color: #ffffffbe;
+    border-radius: 100px;
+    width: 30px;
+    height: 30px;
+    padding: 5px;
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    opacity: 0; /* مخفی در ابتدا */
+    transform: rotate(180deg) scale(0.5); /* کوچک‌تر و چرخیده */
+    transition: opacity 0.3s ease-in-out, transform 0.5s ease-in-out;
+  }
+  
+  /* نمایش و چرخش هنگام هاور */
+  .card:hover .arrow {
+    opacity: 1; /* نمایش فلش */
+    transform: rotate(540deg) scale(1); /* چرخش 360 درجه و بازگشت به اندازه طبیعی */
+  }
+  
+  /* نمایش متن هنگام هاور */
+  .card:hover .infoWrapper {
+    opacity: 1;
+  }
+  
+  /* افکت روی لوگو */
+  .card:hover .logo {
+    transform: scale(1.1);
+    transition: 0.3s ease-in-out;
+  }
+  
+  
+  .card::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    transition: opacity 900ms var(--ease-out);
+  }
+  
+  .card::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    aspect-ratio: 1;
+    opacity: 0;
+    transition: opacity 800ms var(--ease-out);
+  }
+  
+  .card > * {
+    grid-area: card;
+  }
+  
+  svg {
+    position: relative;
+    z-index: 1;
+    width: 30%;
+    height: auto;
+    color: var(--surface-3);
+    transition: 300ms var(--ease-out);
+    transition-property: color, scale;
+  }
+  
+  .card:focus-within {
+    outline: 5px auto Highlight;
+    outline: 5px auto -webkit-focus-ring-color;
+  }
+  
+  .card:hover, .card:focus-within {
+    border-color: var(--active-color, var(--fg));
+    transition: border-color 800ms var(--ease-in-out);
+  }
+  
+  .card:hover svg, .card:focus-within svg {
+    color: var(--active-color, var(--fg));
+    scale: 1.1;
+    transition: 300ms var(--ease-in-out);
+  }
+  
+  .card:hover::before, .card:focus-within::before {
+    opacity: 0;
+  }
+  
+  .card:hover::after, .card:focus-within::after {
+    opacity: 1;
+  }

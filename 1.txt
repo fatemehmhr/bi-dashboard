@@ -1,0 +1,142 @@
+در این قسمت از کد میخوام یک تیبل مثل عکسی که بهت دادم درست کنی که درخت واره باشه و تا سه مرحله داشته باشد:
+دیتای این تیبل با توجه به تاریخ شروع و تاریخ پایان و نام شرکت تغییر پیدا میکند.
+این نام ای پی آی من هستش:
+@https://192.168.189.52:7120/Project/financial-statement?start_date=14040101&end_date=14040210&company_name=%D9%BE%D9%84%DB%8C%D9%85%D8%B1%20%D9%BE%D8%A7%DA%A9%20%D8%A2%D8%B1%DB%8C%D8%A7%D9%86 
+و این هم قسمتی از دیتای من که از تاریخ: 14040101 تا 14040210 و شرکت پلیمر پاک آریان انتخاب شده است:
+[
+  {
+    "company_Name": "پلیمر پاک آریان",
+    "jyear": "1404",
+    "categories": [
+      {
+        "statement_Category1": "دارایی ها",
+        "total": 14436477.11563,
+        "subCategories": [
+          {
+            "statement_Category2": "دارایی های غیر جاری",
+            "total": 2524925.3403999996,
+            "items": [
+              {
+                "statement_Title": "دارایی ثابت مشهود",
+                "amount": 2499903.8057699995
+              },
+              {
+                "statement_Title": "دارایی های نامشهود",
+                "amount": 25016.53463
+              },
+              {
+                "statement_Title": "سرمایه گذاری های بلندمدت",
+                "amount": 5
+              }
+            ]
+          },
+          {
+            "statement_Category2": "دارایی های جاری",
+            "total": 11911551.775230002,
+            "items": [
+              {
+                "statement_Title": "پیش پرداخت ها و سپرده ها",
+                "amount": 977100.78854
+              },
+              {
+                "statement_Title": "دریافتنی های تجاری و سایر دریافتنی ها",
+                "amount": 3218134.91646
+              },
+              {
+                "statement_Title": "موجودی مواد و کالا",
+                "amount": 4704783.803590001
+              },
+              {
+                "statement_Title": "موجودی نقد",
+                "amount": 3011532.26664
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "statement_Category1": "بدهی ها",
+        "total": -10846032.65455,
+        "subCategories": [
+          {
+            "statement_Category2": "بدهی های غیر جاری",
+            "total": -1289761.7003,
+            "items": [
+              {
+                "statement_Title": "پرداختنی های بلند مدت",
+                "amount": -1286188.28044
+              },
+              {
+                "statement_Title": "ذخیره مزایای پایان خدمت کارکنان",
+                "amount": -3573.41986
+              }
+            ]
+          },
+          {
+            "statement_Category2": "بدهی های جاری",
+            "total": -9556270.95425,
+            "items": [
+              {
+                "statement_Title": "پرداختنی های تجاری و سایر پرداختنی ها",
+                "amount": -5774167.75192
+              },
+              {
+                "statement_Title": "پیش دریافت ها",
+                "amount": 334698.76972
+              },
+              {
+                "statement_Title": "تسهیلات مالی",
+                "amount": -4082984.09679
+              },
+              {
+                "statement_Title": "ذخایر",
+                "amount": -5425.79688
+              },
+              {
+                "statement_Title": "مالیات پرداختنی",
+                "amount": -28392.07838
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "statement_Category1": "حقوق مالکانه",
+        "total": -3590444.461101,
+        "subCategories": [
+          {
+            "statement_Category2": "حقوق مالکانه",
+            "total": -3590444.461101,
+            "items": [
+              {
+                "statement_Title": "سایر اندوخته ها",
+                "amount": -71232.92762
+              },
+              {
+                "statement_Title": "سرمایه",
+                "amount": -2200000
+              },
+              {
+                "statement_Title": "سود انباشته",
+                "amount": -1319211.5334810002
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]
+پس تو این صفحه باید تاریخ شروع و پایان و نام شرکت را دریافت کنم.
+(میخوام نام شرکت هارم با توجه به آیدی هلدینگ تو صفحه بهم نمایش بدی)
+نام هد اول: statement_Category1
+نام هد دوم: statement_Category2
+(هر statement_Category1 دارای دو زیر مجموعه  به نام statement_Category2 است)
+و هر statement_Category2 دارای چند زیر مجموعه با نام statement_Title است.
+مقدار هر statement_Title در مقابل آن نمایش داده میشود و جمع کل هر statement_Title در مقابل statement_Category2 نمایش داده میشود.
+و جمع هر دو statement_Category2  در مقابل statement_Category1 نمایش داده میشود.
+این تیبل رو با material ui و ویجت های زیر بنویس:
+- جمع کل در بالا: با استفاده از یک <Box> یا <Typography> بالای جدول
+- باز و بسته شدن سطرها: استفاده از Collapse
+- فرمت پولی با کاما: استفاده از Intl.NumberFormat() یا toLocaleString()
+- واکنش‌گرا	جدول در موبایل هم خوب دیده میشه با استفاده از MUI Grid یا sx styleها

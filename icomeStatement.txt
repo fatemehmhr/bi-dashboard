@@ -1,0 +1,1066 @@
+import React, { useEffect, useState } from 'react';
+import { IconButton, Slider, Box, Typography } from '@mui/material';
+import { KeyboardArrowDown, KeyboardArrowUp, ArrowBackIos, ArrowForwardIos } from '@mui/icons-material';
+import { useHolding } from '../../context/HoldingContext';
+import DateRangePicker from '../../components/DateRangePicker';
+import HoldingsNavbar from '../../components/HoldingsNavbar';
+import Lottie from 'react-lottie'
+import spinner from '../../assets/Animation.json';
+import axios from 'axios';
+import ReactECharts from 'echarts-for-react';
+
+const IncomeStatement = () => {
+  const { startDate, endDate } = useHolding();
+  const [hoveredNavHoldingName, setHoveredNavHoldingName] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [selectedHolding, setSelectedHolding] = useState('');
+  const [selectedCompany, setSelectedCompany] = useState('');
+  const [openCategory1, setOpenCategory1] = useState({});
+  const [openCategory2, setOpenCategory2] = useState({});
+  const [currentSlide, setCurrentSlide] = useState(0);
+  const [allHoldingsData, setAllHoldingsData] = useState([]);
+  const [incomeStatementData, setIncomeStatementData] = useState([]);
+
+  // چت‌بات state و تابع‌ها (از tarazname.jsx)
+  const [chatInput, setChatInput] = useState('');
+  const [chatMessages, setChatMessages] = useState([
+    { sender: 'bot', text: "چطور میتونم کمکتون کنم؟" },
+  ]);
+  const [sessionData, setSessionData] = useState(null);
+  const [isChatLoading, setIsChatLoading] = useState(false);
+  const [sessionsHistory, setSessionsHistory] = useState([]);
+  const [showSessionsList, setShowSessionsList] = useState(false);
+  const [isLoadingSession, setIsLoadingSession] = useState(false);
+
+  // Lottie animation options
+  const defaultOptions = {
+    loop: true,
+    autoplay: true,
+    animationData: spinner,
+    rendererSettings: {
+      preserveAspectRatio: 'xMidYMid slice'
+    }
+  };
+
+  // چت‌بات functions (از tarazname.jsx)
+  const handleSendMessage = async () => {
+    if (!chatInput.trim() || isChatLoading) return;
+  
+    const userMessage = { sender: 'user', text: chatInput };
+    setChatMessages((prev) => [...prev, userMessage]);
+    
+    const currentQuestion = chatInput;
+    setChatInput(''); // پاک کردن input فوری
+    setIsChatLoading(true); // شروع loading
+    
+    // اضافه کردن پیام "در حال فکر کردن"
+    const thinkingMessage = { sender: 'bot', text: 'در حال فکر کردن...', isThinking: true };
+    setChatMessages((prev) => [...prev, thinkingMessage]);
+  
+    try {
+      let botResponse;
+      
+      if (!sessionData) {
+        // اولین پیام - ایجاد session
+        const { data } = await axios.post(
+          `http://192.168.189.81:9000/chat/start-session?personnel_id=210152&user_full_name=amirhossein`
+        );
+        console.log('Session data:', data);
+        
+        // ذخیره session data
+        setSessionData(data);
+        
+        // بروزرسانی لیست sessions
+        fetchSessionsHistory();
+        
+        // ارسال پیام اول با analyze API
+        const analyzeData = await sendAnalyzeRequest(currentQuestion, data);
+        botResponse = { sender: 'bot', text: analyzeData || data.message || 'پاسخی دریافت نشد.' };
+      } else {
+        // پیام‌های بعدی - استفاده از analyze API
+        const analyzeData = await sendAnalyzeRequest(currentQuestion, sessionData);
+        botResponse = { sender: 'bot', text: analyzeData || 'پاسخی دریافت نشد.' };
+      }
+      
+      // حذف پیام "در حال فکر کردن" و اضافه کردن پاسخ واقعی
+      setChatMessages((prev) => [...prev.slice(0, -1), botResponse]);
+      
+      // بروزرسانی sessions برای به‌روزرسانی تعداد پیام‌ها
+      fetchSessionsHistory();
+    } catch (err) {
+      console.error('خطا در دریافت پاسخ از چت‌بات:', err);
+      // حذف پیام "در حال فکر کردن" و اضافه کردن پیام خطا
+      setChatMessages((prev) => [
+        ...prev.slice(0, -1),
+        { sender: 'bot', text: 'مشکلی در دریافت پاسخ به وجود آمد.' },
+      ]);
+    } finally {
+      setIsChatLoading(false); // پایان loading
+    }
+  };
+
+  // تابع جدید برای API analyze (از tarazname.jsx)
+  const sendAnalyzeRequest = async (userQuestion, currentSessionData) => {
+    if (!currentSessionData || !endDate) return null;
+
+    try {
+      const start = startDate || endDate.subtract(1, 'month');
+      
+      // ساخت URL با تمام پارامترها
+      const params = new URLSearchParams({
+        start_date: start.format("YYYYMMDD"),
+        end_date: endDate.format("YYYYMMDD"),
+        user_question: userQuestion,
+        personnel_id: currentSessionData.user_id,
+        session_id: currentSessionData.session_id
+      });
+
+      // اضافه کردن company_name و holding_name در صورت وجود
+      if (selectedCompany) {
+        params.append('company_name', selectedCompany);
+      }
+      if (selectedHolding) {
+        params.append('holding_name', selectedHolding);
+      }
+
+      const { data } = await axios.get(
+        `http://192.168.189.81:9000/analyze?${params.toString()}`
+      );
+      
+      return data;
+    } catch (err) {
+      console.error('خطا در دریافت پاسخ از analyze API:', err);
+      return null;
+    }
+  };
+
+  // تابع دریافت تاریخچه sessions (از tarazname.jsx)
+  const fetchSessionsHistory = async () => {
+    try {
+      const { data } = await axios.get(
+        `http://192.168.189.81:9000/chat/history/210152?limit=10`
+      );
+      
+      // فیلتر sessions که نام دارند یا پیام دارند
+      const validSessions = data.sessions.filter(session => 
+        session.Name || session.Message_Count > 0
+      );
+      
+      setSessionsHistory(validSessions);
+    } catch (err) {
+      console.error('خطا در دریافت تاریخچه sessions:', err);
+    }
+  };
+
+  // تابع انتخاب session از تاریخچه (از tarazname.jsx)
+  const selectSession = async (session) => {
+    if (isLoadingSession) return; // جلوگیری از کلیک مکرر
+    
+    setIsLoadingSession(true);
+    
+    setSessionData({
+      session_id: session.Session_id,
+      user_id: session.personnel_id || 2, // fallback
+      message: session.Name || 'Session بارگذاری شد'
+    });
+    
+    setShowSessionsList(false);
+    
+    // نمایش loading پیام
+    setChatMessages([
+      { sender: 'bot', text: 'در حال بارگذاری مکالمات...', isLoading: true }
+    ]);
+
+    try {
+      // بارگذاری مکالمات session
+      const conversations = await fetchConversations(session.Session_id);
+      
+      if (conversations.length > 0) {
+        setChatMessages(conversations);
+      } else {
+        // اگر مکالمه‌ای وجود نداشت، پیام خوش‌آمد نمایش بده
+        setChatMessages([
+          { sender: 'bot', text: session.Name || 'Session انتخاب شده بارگذاری شد' }
+        ]);
+      }
+    } catch (error) {
+      console.error('خطا در بارگذاری session:', error);
+      setChatMessages([
+        { sender: 'bot', text: 'خطا در بارگذاری مکالمات' }
+      ]);
+    } finally {
+      setIsLoadingSession(false);
+    }
+
+    // Scroll to bottom after a short delay
+    setTimeout(() => {
+      const chatBox = document.getElementById('chat-box');
+      if (chatBox) {
+        chatBox.scrollTop = chatBox.scrollHeight;
+      }
+    }, 100);
+  };
+
+  // تابع شروع مکالمه جدید (از tarazname.jsx)
+  const startNewChat = () => {
+    setSessionData(null);
+    setChatMessages([
+      { sender: 'bot', text: "چطور میتونم کمکتون کنم؟" },
+    ]);
+    setShowSessionsList(false);
+  };
+
+  // تابع دریافت مکالمات یک session (از tarazname.jsx)
+  const fetchConversations = async (sessionId) => {
+    try {
+      const { data } = await axios.get(
+        `http://192.168.189.81:9000/chat/conversations/${sessionId}?limit=50`
+      );
+      
+      // تبدیل داده‌ها به فرمت مناسب برای chatMessages
+      const messages = data.history.map(msg => ({
+        sender: msg.From_User ? 'user' : 'bot',
+        text: msg.Message_Content,
+        date: msg.Date,
+        userName: msg.User_Full_Name
+      }));
+      
+      return messages;
+    } catch (err) {
+      console.error('خطا در دریافت مکالمات:', err);
+      return [];
+    }
+  };
+
+  // Holdings functions (از tarazname.jsx)
+  const getUniqueHoldings = () => {
+    console.log('allHoldingsData in getUniqueHoldings:', allHoldingsData); // اضافه کردن debug
+    
+    const holdingsMap = new Map();
+    allHoldingsData.forEach(item => {
+      // فیلتر کردن هلدینگ میهن (ایدی 3)
+      if (item.holding_Id !== 3 && !holdingsMap.has(item.holding_Name)) {
+        holdingsMap.set(item.holding_Name, {
+          holding_Id: item.holding_Id,
+          holding_Name: item.holding_Name,
+          holding_Logo: item.holding_Logo
+        });
+      }
+    });
+    
+    const result = Array.from(holdingsMap.values());
+    console.log('Unique holdings result:', result); // اضافه کردن debug
+    return result;
+  };
+
+  // Get companies for selected holding (از tarazname.jsx)
+  const getCompaniesForHolding = (holdingName) => {
+    const companies = new Set();
+    allHoldingsData
+      .filter(item => item.holding_Name === holdingName)
+      .forEach(item => {
+        item.companies.forEach(company => {
+          companies.add(company.company_Name);
+        });
+      });
+    return Array.from(companies);
+  };
+
+  // Handle holding selection (از tarazname.jsx)
+  const handleHoldingMouseEnter = (holdingName) => {
+    setHoveredNavHoldingName(holdingName);
+    setSelectedHolding(holdingName); // فعال کردن هلدینگ با hover
+  };
+
+  const handleHoldingMouseLeave = () => {
+    setHoveredNavHoldingName('');
+    // selectedHolding را تغییر نمی‌دهیم تا فعال باقی بماند
+  };
+
+  const handleCompanyClick = (companyName) => {
+    if (selectedCompany === companyName) {
+      setSelectedCompany('');
+    } else {
+      setSelectedCompany(companyName);
+    }
+  };
+
+  // Fetch data from new IncomeStatement API
+  const fetchIncomeStatementData = async () => {
+    if (!endDate) return;
+    try {
+      setIsLoading(true);
+      const start = startDate || endDate.subtract(1, 'month');
+      
+      // Call the new IncomeStatement API without filtering parameters to get all data
+      const { data } = await axios.get(
+        `https://192.168.42.20/Project/IncomeStatement?start_date=${start.format("YYYYMMDD")}&end_date=${endDate.format("YYYYMMDD")}`
+      );
+      
+      console.log('Income statement data fetched:', data); // اضافه کردن debug
+      setIncomeStatementData(data);
+    } catch (err) {
+      console.error('Error fetching income statement data:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Fetch holdings data (using same API as tarazname.jsx)
+  const fetchHoldingsData = async () => {
+    if (!endDate) return;
+    try {
+      const start = startDate || endDate.subtract(1, 'month');
+
+      // Use same API endpoint as tarazname.jsx to get holdings with logos
+      const { data } = await axios.get(
+        `https://192.168.42.20/Project/financial-statement?start_date=${start.format("YYYYMMDD")}&end_date=${endDate.format("YYYYMMDD")}`
+      );
+      
+      console.log('Holdings data fetched:', data);
+      setAllHoldingsData(data);
+    } catch (err) {
+      console.error('Error fetching holdings data:', err);
+    }
+  };
+
+  // Get chart options for current slide
+  const getSlideChartOptions = () => {
+    const currentChart = chartData[currentSlide];
+    
+    return {
+      title: {
+        text: currentChart.title,
+        left: 'center',
+        top: 10,
+        textStyle: {
+          fontFamily: 'iransans',
+          fontSize: 14,
+          color: '#000'
+        }
+      },
+      tooltip: {
+        trigger: 'axis',
+        formatter: function(params) {
+          let result = params[0].name + '<br/>';
+          params.forEach(param => {
+            const formattedValue = typeof param.value === 'number' ? 
+              param.value.toLocaleString() : param.value;
+            result += `${param.marker} ${param.seriesName}: ${formattedValue}<br/>`;
+          });
+          return result;
+        }
+      },
+      legend: {
+        data: currentChart.series.map(s => s.name),
+        top: 35,
+        orient: 'horizontal',
+        icon: 'circle',
+        textStyle: {
+          fontFamily: 'iransans',
+          fontSize: 10
+        }
+      },
+      grid: {
+        top: 70,
+        left: '10%',
+        right: '10%',
+        bottom: '20%',
+        containLabel: true
+      },
+      xAxis: {
+        type: 'category',
+        data: currentChart.months,
+        axisLabel: {
+          rotate: 45,
+          interval: 0,
+          fontFamily: 'iransans',
+          fontSize: 9
+        },
+        axisTick: {
+          alignWithLabel: true
+        }
+      },
+      yAxis: {
+        type: 'value',
+        axisLabel: {
+          formatter: function(value) {
+            if (value >= 1000000) {
+              return (value / 1000000).toFixed(1) + 'M';
+            } else if (value >= 1000) {
+              return (value / 1000).toFixed(1) + 'K';
+            }
+            return value;
+          },
+          fontFamily: 'iransans',
+          fontSize: 9
+        },
+        splitLine: {
+          show: true,
+          lineStyle: {
+            type: 'dashed',
+            opacity: 0.3
+          }
+        }
+      },
+      series: currentChart.series.map(serie => ({
+        name: serie.name,
+        type: 'line',
+        data: serie.data,
+        color: serie.color,
+        symbol: 'circle',
+        symbolSize: 4,
+        lineStyle: {
+          width: 2
+        },
+        smooth: true
+      })),
+      animation: true,
+      animationDuration: 600,
+      animationEasing: 'cubicOut'
+    };
+  };
+
+  // Handle arrow navigation
+  const handlePrevSlide = () => {
+    setCurrentSlide((prev) => (prev > 0 ? prev - 1 : chartData.length - 1));
+  };
+
+  const handleNextSlide = () => {
+    setCurrentSlide((prev) => (prev < chartData.length - 1 ? prev + 1 : 0));
+  };
+
+  // Sample data for 3 different charts based on the image
+  const chartData = [
+    {
+      title: 'روند سود ناخالص',
+      months: ['فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'اردیبهشت', 'خرداد'],
+      years: ['1403', '1404'],
+      series: [
+        {
+          name: 'سود ناخالص',
+          data: [4053312, 5010558, 3690792, 10879605, 8405459, 8051866],
+          color: '#22c55e'
+        },
+        {
+          name: 'سود عملیاتی', 
+          data: [4219708, 5006864, 3683687, 3572438, 8904287, -1367],
+          color: '#ef4444'
+        },
+        {
+          name: 'سود خالص',
+          data: [4927289, 4927289, 3683687, 15800186, 13542497, 8051866],
+          color: '#3b82f6'
+        }
+      ]
+    },
+    {
+      title: 'روند درآمد عملیاتی',
+      months: ['فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'اردیبهشت', 'خرداد'],
+      years: ['1403', '1404'],
+      series: [
+        {
+          name: 'درآمد عملیاتی',
+          data: [3500000, 4200000, 3800000, 9500000, 7800000, 7200000],
+          color: '#8b5cf6'
+        },
+        {
+          name: 'درآمد غیر عملیاتی',
+          data: [3800000, 4500000, 3200000, 3100000, 8200000, 1000],
+          color: '#f59e0b'
+        }
+      ]
+    },
+    {
+      title: 'روند هزینه‌ها',
+      months: ['فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'اردیبهشت', 'خرداد'],
+      years: ['1403', '1404'],
+      series: [
+        {
+          name: 'هزینه‌های عملیاتی',
+          data: [2800000, 3400000, 2900000, 7200000, 6100000, 5800000],
+          color: '#dc2626'
+        },
+        {
+          name: 'هزینه‌های مالی',
+          data: [2900000, 3200000, 2700000, 2800000, 6800000, 500],
+          color: '#7c3aed'
+        }
+      ]
+    }
+  ];
+
+  // Expenses data based on the image
+  const expensesData = [
+    { title: 'هزینه سود وکارکرد پایه', amount: 2239904 },
+    { title: 'هزینه حقوق پایه', amount: 665115 },
+    { title: 'هزینه اجاره محل', amount: 562700 },
+    { title: 'هزینه اجاره کار، خانه', amount: 305914 },
+    { title: 'هزینه بیمه سهم کارفرما(۲۰۲۳)', amount: 286627 },
+    { title: 'بهای تمام شده مواد اولیه فروش رفته', amount: 286010 },
+    { title: 'هزینه سود تسهیلات', amount: 277849 },
+    { title: 'هزینه حمل،نقلیه و بارگیری', amount: 260202 },
+    { title: 'هزینه حق الزحمه', amount: 175180 },
+    { title: 'بهای تمام شده مواد اولیه فروش رفته', amount: 151177 },
+    { title: 'هزینه های متفرقه مالی', amount: 125418 },
+    { title: 'سود زیان ناشی از تغییر دارایی‌ها و بدهی‌های ارزی عملیاتی', amount: 115381 }
+  ];
+
+  // Reset selected company when holding changes
+  useEffect(() => {
+    setSelectedCompany('');
+  }, [selectedHolding]);
+
+  // Fetch data when dates change
+  useEffect(() => {
+    if (endDate) {
+      fetchIncomeStatementData();
+      fetchHoldingsData();
+    }
+  }, [startDate, endDate]);
+
+  // Filter data when holding or company selection changes
+  useEffect(() => {
+    // No need to filter incomeStatementData anymore since filtering is done in render functions
+    // This useEffect can be simplified or removed since the data processing is now handled in getFilteredIncomeData()
+    
+    // We could add any side effects here when company/holding selection changes
+    console.log('Selection changed - Holding:', selectedHolding, 'Company:', selectedCompany);
+  }, [selectedHolding, selectedCompany]);
+
+  // بارگذاری sessions در ابتدا (از tarazname.jsx)
+  useEffect(() => {
+    fetchSessionsHistory();
+  }, []);
+
+  // بارگذاری holdings در ابتدای component (اضافه کردن این useEffect)
+  useEffect(() => {
+    if (endDate) {
+      fetchHoldingsData();
+    }
+  }, []);
+
+  // Immediate fetch of holdings when component mounts (fallback)
+  useEffect(() => {
+    // اگر endDate وجود دارد، فوری holdings را بارگذاری کن
+    const timer = setTimeout(() => {
+      if (endDate && allHoldingsData.length === 0) {
+        fetchHoldingsData();
+      }
+    }, 100);
+
+    return () => clearTimeout(timer);
+  }, [endDate, allHoldingsData.length]);
+
+  const toggleCategory1 = (name) => {
+    setOpenCategory1((prev) => ({ ...prev, [name]: !prev[name] }));
+  };
+
+  const toggleCategory2 = (key) => {
+    setOpenCategory2((prev) => ({ ...prev, [key]: !prev[key] }));
+  };
+
+  // Sample years - this will be dynamic based on user selection
+  const allYears = Array.from(new Set(incomeStatementData.map(item => item.jyear))).sort();
+
+  // Get filtered data for selected company
+  const getFilteredIncomeData = () => {
+    if (!selectedCompany || !selectedHolding) return [];
+    
+    console.log('Filtering data for:', { selectedCompany, selectedHolding }); // Debug
+    console.log('Available income data:', incomeStatementData); // Debug
+    
+    // Find the specific company data from selected holding
+    const selectedHoldingData = incomeStatementData.filter(item => item.holding_Name === selectedHolding);
+    console.log('Filtered holding data:', selectedHoldingData); // Debug
+    
+    const companyData = [];
+    
+    selectedHoldingData.forEach(yearData => {
+      const company = yearData.companies.find(c => c.company_Name === selectedCompany);
+      if (company) {
+        companyData.push({
+          jyear: yearData.jyear, // jyear از سطح holding گرفته می‌شود
+          categories: company.categories
+        });
+      }
+    });
+    
+    console.log('Final company data:', companyData); // Debug
+    return companyData;
+  };
+
+  // Get all unique category combinations for table structure
+  const getTableStructure = () => {
+    const filteredData = getFilteredIncomeData();
+    if (filteredData.length === 0) return [];
+    
+    // Get all unique categories from all years
+    const categoryMap = new Map();
+    
+    filteredData.forEach(yearData => {
+      yearData.categories.forEach(cat => {
+        const key = `${cat.statement_Category1}-${cat.statement_Category2}`;
+        if (!categoryMap.has(key)) {
+          categoryMap.set(key, {
+            statement_Category1: cat.statement_Category1,
+            statement_Category2: cat.statement_Category2,
+            isTotal: cat.isTotal,
+            priority: cat.priority
+          });
+        }
+      });
+    });
+    
+    // Sort by priority and group by Category1
+    return Array.from(categoryMap.values()).sort((a, b) => {
+      if (a.priority && b.priority) {
+        return parseInt(a.priority) - parseInt(b.priority);
+      }
+      return 0;
+    });
+  };
+
+  // Get value for specific category and year
+  const getCategoryValue = (category1, category2, year, field = 'profit_And_Loss') => {
+    const filteredData = getFilteredIncomeData();
+    const yearData = filteredData.find(item => item.jyear === year);
+    
+    if (!yearData) return 0;
+    
+    const category = yearData.categories.find(cat => 
+      cat.statement_Category1 === category1 && cat.statement_Category2 === category2
+    );
+    
+    return category ? category[field] : 0;
+  };
+
+  const renderRows = () => {
+    if (!selectedCompany || !selectedHolding) {
+      return (
+        <tr className="bg-white h-8">
+          <td colSpan="100%" className="text-center py-4 text-[11px] text-gray-500">
+            لطفاً هلدینگ و شرکت مورد نظر را انتخاب کنید
+          </td>
+        </tr>
+      );
+    }
+
+    const tableStructure = getTableStructure();
+    
+    // Group items by Category1
+    const groupedData = {};
+    tableStructure.forEach(item => {
+      if (!groupedData[item.statement_Category1]) {
+        groupedData[item.statement_Category1] = {
+          subcategories: [],
+          total: null
+        };
+      }
+      
+      if (item.isTotal) {
+        groupedData[item.statement_Category1].total = item;
+      } else {
+        groupedData[item.statement_Category1].subcategories.push(item);
+      }
+    });
+
+    const rows = [];
+
+    // Render each group (without Category1 headers)
+    Object.keys(groupedData).forEach((category1, groupIndex) => {
+      const group = groupedData[category1];
+
+      // Add subcategories (without header)
+      group.subcategories.forEach((item, subIndex) => {
+        rows.push(
+          <tr key={`cat2-${groupIndex}-${subIndex}`} className="bg-white h-8">
+            <td className="border py-0.5 px-3 text-[11px]">
+              {item.statement_Category2}
+            </td>
+            {allYears.map((year) => (
+              <React.Fragment key={year}>
+                <td className="text-center border py-0.5 text-[11px]">
+                  {getCategoryValue(item.statement_Category1, item.statement_Category2, year, 'profit_And_Loss').toLocaleString()}
+                </td>
+                <td className="text-center border py-0.5 text-[11px]">
+                  {getCategoryValue(item.statement_Category1, item.statement_Category2, year, 'profit_And_Loss_Ratio_To_Previous_Year').toFixed(1)}%
+                </td>
+              </React.Fragment>
+            ))}
+          </tr>
+        );
+      });
+
+      // Add total row as the main category name (without "جمع" prefix)
+      if (group.total) {
+        rows.push(
+          <tr key={`total-${groupIndex}`} className="bg-blue-50 h-8 font-semibold">
+            <td className="border py-0.5 px-3 text-[11px] font-bold">
+              {group.total.statement_Category1}
+            </td>
+            {allYears.map((year) => (
+              <React.Fragment key={year}>
+                <td className="text-center border py-0.5 text-[11px] bg-blue-100 font-semibold">
+                  {getCategoryValue(group.total.statement_Category1, group.total.statement_Category2, year, 'profit_And_Loss').toLocaleString()}
+                </td>
+                <td className="text-center border py-0.5 text-[11px] bg-blue-100 font-semibold">
+                  {getCategoryValue(group.total.statement_Category1, group.total.statement_Category2, year, 'profit_And_Loss_Ratio_To_Previous_Year').toFixed(1)}%
+                </td>
+              </React.Fragment>
+            ))}
+          </tr>
+        );
+      }
+    });
+
+    return rows;
+  };
+
+  const getTableTitle = () => {
+    if (selectedCompany && selectedHolding) {
+      return `صورت سود و زیان شرکت: ${selectedCompany}`;
+    } else if (selectedHolding && !selectedCompany) {
+      return `لطفاً شرکت مورد نظر را از هلدینگ "${selectedHolding}" انتخاب کنید`;
+    } else if (!selectedHolding) {
+      return `لطفاً ابتدا هلدینگ مورد نظر را انتخاب کنید`;
+    }
+    return `صورت سود و زیان`;
+  };
+
+  const handleHoldingClick = (holdingName) => {
+    if (selectedHolding === holdingName) {
+      setSelectedHolding('');
+    } else {
+      setSelectedHolding(holdingName);
+    }
+  };
+
+  const handleCompanyClickIncome = (companyName) => {
+    if (selectedCompany === companyName) {
+      setSelectedCompany('');
+    } else {
+      setSelectedCompany(companyName);
+    }
+  };
+
+  return (
+    <div>
+      <DateRangePicker title="صورت سود و زیان" />
+      
+      {/* Holdings Selection */}
+      <div className="w-full px-5 md:my-2 2xl:my-4 text-xs">
+        <div className="flex flex-wrap justify-center gap-3 mx-auto mb-3">
+          {getUniqueHoldings().map((holding, idx) => {
+            const isActive = selectedHolding === holding.holding_Name;
+            
+            return (
+              <div
+                key={idx}
+                onMouseEnter={() => handleHoldingMouseEnter(holding.holding_Name)}
+                onMouseLeave={handleHoldingMouseLeave}
+                className={`
+                  ${isActive ? 'bg-black' : 'bg-white'}
+                  md:w-[100px] 2xl:w-[155px] md:h-[90px] 2xl:h-auto  // 👈 ارتفاع ثابت
+                  md:p-2 2xl:p-1 flex 
+                  2xl:flex-row md:flex-col items-center 
+                  md:rounded-[13px] 2xl:rounded-[50px] shadow-sm 
+                  hover:shadow-md transition-shadow duration-200
+                `}
+              >
+                {holding.holding_Logo && (
+                  <div className="bg-[#E7E7E7] 2xl:w-[50px] 2xl:h-[50px] md:w-[40px] md:h-[40px] p-2 flex justify-center items-center rounded-full overflow-hidden shrink-0">
+                    <img
+                      src={holding.holding_Logo}
+                      alt={holding.holding_Name}
+                      className="w-full h-full object-contain"
+                    />
+                  </div>
+                )}
+
+                {/* متن */}
+                <div className="2xl:mr-2 flex-1 text-center 2xl:text-right mt-2 2xl:mt-0">
+                  <p
+                    className={`
+                      md:text-[9px] 2xl:text-[11px] leading-4
+                      ${isActive ? 'text-white' : 'text-gray-700'}
+                      line-clamp-2
+                    `}
+                  >
+                    {holding.holding_Name}
+                  </p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        
+        {/* Companies Selection */}
+        {selectedHolding && (
+          <div className="flex flex-wrap justify-center gap-3 mx-auto">
+            {getCompaniesForHolding(selectedHolding).map((companyName, idx) => (
+              <div
+                key={idx}
+                onClick={() => handleCompanyClickIncome(companyName)}
+                className={`cursor-pointer p-2 rounded shadow md:text-[9px] 2xl:text-[11px] rounded-full flex-shrink-0 ${
+                  selectedCompany === companyName 
+                    ? 'bg-black text-white' 
+                    : 'bg-white text-black hover:bg-gray-200'
+                }`}
+              >
+                {companyName}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className='flex md:flex-col xl:container mx-auto'>
+        {/* Main Content Section */}
+        <div className='flex flex-row w-full px-0 md:px-5 2xl:pl-2 mx-auto gap-2 h-[38vh]'>
+  {/* Chatbot Section */}
+  <div className="h-full md:w-5/12 flex relative flex-col bg-white border rounded overflow-hidden">
+    {showSessionsList && (
+      <div className="absolute inset-0 z-20 flex">
+        <div className="w-1/2 bg-gray-50 border-r shadow-lg">
+          <div className="h-full flex flex-col">
+            <div className="bg-[#0087FF] text-white text-center py-[14px] text-[11px]">تاریخچه مکالمات</div>
+            <div className="p-2 border-b border-gray-200">
+              <button
+                onClick={startNewChat}
+                className="w-full bg-black hover:bg-blue-700 text-white text-[11px] py-2 px-3 rounded transition-colors"
+              >
+                + مکالمه جدید
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-2">
+              {sessionsHistory.map((session) => (
+                <div
+                  key={session.Session_id}
+                  onClick={() => !isLoadingSession && selectSession(session)}
+                  className={`
+                    cursor-pointer p-3 mb-2 rounded text-[11px] transition-colors
+                    ${sessionData?.session_id === session.Session_id ? 'bg-blue-100 border-l-2 border-blue-500' : 'bg-white'}
+                    ${isLoadingSession ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-200'}
+                  `}
+                >
+                  <div className="font-medium">
+                    {session.Name?.trim() || `Session ${session.Session_id}`}
+                    {isLoadingSession && sessionData?.session_id === session.Session_id && (
+                      <span className="ml-2 text-[11px] text-blue-600">در حال بارگذاری...</span>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {sessionsHistory.length === 0 && (
+                <div className="text-center text-gray-500 text-[11px] mt-4">هیچ مکالمه‌ای یافت نشد</div>
+              )}
+            </div>
+          </div>
+        </div>
+        <div className="w-1/2 bg-black bg-opacity-30" onClick={() => setShowSessionsList(false)}></div>
+      </div>
+    )}
+
+    <div className="flex flex-col h-full">
+      <div className="bg-[#000] text-white text-center py-1 text-[11px] flex items-center justify-between px-3">
+        <button
+          onClick={() => setShowSessionsList(!showSessionsList)}
+          className="text-white hover:bg-gray-700 p-1 rounded"
+        >
+          ☰
+        </button>
+        <span>
+          {sessionData ? 
+            (sessionsHistory.find(s => s.Session_id === sessionData.session_id)?.Name?.trim() || 'مکالمه فعال')
+            : 'چت‌ بات مالی'
+          }
+        </span>
+        <div className="w-6"></div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50 text-[11px]" id="chat-box">
+        {chatMessages.map((msg, idx) => (
+          <div
+            key={idx}
+            className={`flex ${msg.sender === 'user' ? 'justify-start' : 'justify-end'}`}
+          >
+            <div
+              className={`px-3 py-2 rounded-lg max-w-[80%] ${
+                msg.sender === 'user'
+                  ? 'bg-[#0087FF] text-white rounded-bl-none'
+                  : msg.isThinking || msg.isLoading
+                    ? 'bg-gray-300 text-gray-700 animate-pulse rounded-br-none'
+                    : 'bg-gray-200 text-black rounded-br-none'
+              }`}
+            >
+              {msg.text}
+              {msg.date && (
+                <div className={`text-[10px] mt-1 opacity-70 ${
+                  msg.sender === 'user' ? 'text-blue-100' : 'text-gray-500'
+                }`}>
+                  {new Date(msg.date).toLocaleString('fa-IR')}
+                </div>
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex items-center border-t border-gray-300 bg-white p-2">
+        <input
+          type="text"
+          value={chatInput}
+          onChange={(e) => setChatInput(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+          placeholder={isChatLoading ? "در حال پردازش..." : "پیامت را بنویس..."}
+          disabled={isChatLoading}
+          className={`flex-1 p-2 border text-[11px] ${
+            isChatLoading ? 'bg-gray-100 cursor-not-allowed' : ''
+          }`}
+        />
+        <button
+          onClick={handleSendMessage}
+          disabled={isChatLoading}
+          className={`ml-2 px-4 py-2 text-[11px] ${
+            isChatLoading 
+              ? 'bg-gray-400 text-gray-600 cursor-not-allowed'
+              : 'bg-[#000] text-white hover:bg-gray-800'
+          }`}
+        >
+          {isChatLoading ? '...' : 'ارسال'}
+        </button>
+      </div>
+    </div>
+  </div>
+
+  {/* Table Section */}
+  <div className="h-full md:w-7/12 flex flex-col bg-white border rounded overflow-hidden">
+    <div className="bg-[#000] text-white text-center py-2 text-[11px] mb-1">
+      {getTableTitle()}
+    </div>
+
+    <div className="flex-1 overflow-auto min-h-0">
+      <table className="min-w-full border border-collapse text-[11px]">
+        <thead className="bg-black text-white sticky top-0 z-10">
+          <tr className="h-8">
+            <th className="text-right bg-[#000] text-white py-0.5 px-2 border text-[11px]" rowSpan="2">عنوان</th>
+            {allYears.map((year) => (
+              <th key={year} className="text-center bg-[#000] text-white py-2 px-2 border text-[11px]" colSpan="2">
+                {year}
+              </th>
+            ))}
+          </tr>
+          <tr className="h-8">
+            {allYears.map((year) => (
+              <React.Fragment key={year}>
+                <th className="text-center bg-[#000] text-white pb-2 px-1 border text-[11px]">مبلغ</th>
+                <th className="text-center bg-[#000] text-white pb-2 px-1 border text-[11px]">رشد نسبت به سال قبل</th>
+              </React.Fragment>
+            ))}
+          </tr>
+        </thead>
+        <tbody>{renderRows()}</tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+        {/* Diagram Section */}
+        {/* سطر دوم */}
+        <div className='flex flex-row w-full px-0 md:px-5 2xl:pl-2 mx-auto gap-2 h-[38vh]'>
+          {/* هزینه ها */}
+          <div className="md:w-5/12 flex flex-col bg-white border rounded overflow-hidden">
+            {/* Header */}
+            <div className="bg-[#000] text-white text-center py-2 text-[11px]">
+              هزینه ها
+            </div>
+            {/* Scrollable expenses area */}
+            <div className="flex-1 overflow-y-auto min-h-0">
+              <table className="min-w-full border-collapse">
+                <tbody>
+                  {expensesData.map((expense, idx) => (
+                    <tr key={idx} className="border-b hover:bg-gray-50 h-8">
+                      <td className="py-0.5 px-2 text-right text-[11px] border-l">
+                        {expense.title}
+                      </td>
+                      <td className="py-0.5 px-2 text-center text-[11px]">
+                        <div 
+                          className="bg-red-400 text-black px-1 py-0.5 rounded text-[11px] inline-block min-w-[70px]"
+                          style={{
+                            background: `linear-gradient(90deg, #0087FF ${Math.min((expense.amount / 2500000) * 100, 100)}%,rgba(0, 136, 255, 0.24) ${Math.min((expense.amount / 2500000) * 100, 100)}%)`
+                          }}
+                        >
+                          {expense.amount.toLocaleString()}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* نمودارهای اسلایدری */}
+          <div className="md:w-7/12 flex flex-col bg-white border rounded overflow-hidden">
+            {/* Header */}
+            <div className="bg-[#000] text-white text-center py-2 text-[11px]">
+              نمودارهای مالی
+            </div>
+
+            {/* Chart Area */}
+            <div className="flex-1 flex flex-col min-h-0">
+              {/* Chart with overlaid arrows */}
+              <div className="flex-1 relative">
+                {/* Left Arrow (Previous in RTL) - Positioned absolutely */}
+                <div className="absolute left-2 top-1/2 transform -translate-y-1/2 z-10">
+                  <IconButton 
+                    onClick={handlePrevSlide}
+                    sx={{ 
+                      backgroundColor: 'rgba(0, 0, 0, 0.7)', 
+                      color: 'white',
+                      '&:hover': { backgroundColor: 'rgba(0, 0, 0, 0.9)' },
+                      width: 32,
+                      height: 32,
+                    }}
+                  >
+                    <ArrowBackIos sx={{ fontSize: 16}} />
+                  </IconButton>
+                </div>
+
+                {/* Chart - Full width and height */}
+                <div className="w-full h-full">
+                  <ReactECharts 
+                    option={getSlideChartOptions()}
+                    style={{ height: '100%', width: '100%' }}
+                    notMerge={true}
+                  />
+                </div>
+
+                {/* Right Arrow (Next in RTL) - Positioned absolutely */}
+                <div className="absolute right-2 top-1/2 transform -translate-y-1/2 z-10">
+                  <IconButton 
+                    onClick={handleNextSlide}
+                    sx={{ 
+                      backgroundColor: 'rgba(0, 0, 0, 0.7)', 
+                      color: 'white',
+                      '&:hover': { backgroundColor: 'rgba(0, 0, 0, 0.9)' },
+                      width: 32,
+                      height: 32
+                    }}
+                  >
+                   <ArrowForwardIos sx={{ fontSize: 16,textAlign:"center" }} />
+                  </IconButton>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+
+      </div>
+    </div>
+  );
+};
+
+export default IncomeStatement;

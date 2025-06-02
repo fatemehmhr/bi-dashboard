@@ -1,0 +1,88 @@
+قبلا از سه ای پی آی برای نمایش دیتا داخل تیبل سود و زیان استفاده میکردم.
+از IncomeStatement برای وقتی که کاربر یک شرکت را انتخاب کرد.
+از HoldingQueryHierarchical برای وقتی که کاربر یک هلدینگ زا انتخاب میکند.
+و از ExecuteTMIGGeneralStatementQueryHierarchical برای وقتی که کاربر هلدینگ گروه صنعتی طبیعت ماکان را انتخاب کرد.
+حالا یک ای پی آی جدید نوشتم که هر سه این مقادیر را داره به اسم: profit_and_loss
+ساختارش هم به این شکل هستش:
+{
+"tmig" : [],
+"holding" : [],
+"company" : []
+}
+
+دیتای داخل هرکدام هم به شکل زیر است:
+"tmig": [
+    {
+      "jyear": "1402",
+      "categories": [
+        {
+          "statement_Category1": "سود خالص قبل از مالیات",
+          "is_Total": true,
+          "categories_Level2": [
+            {
+              "statement_Category2": "سایر درآمد ها و هزینه های غیر عملیاتی",
+              "priority": "8",
+              "is_Total": false,
+              "profit_And_Loss": 1856793757,
+              "profit_And_Loss_Ratio_To_Previous_Year": -630.3306805817745
+            },
+            {
+              "statement_Category2": "هزینه های مالی",
+              "priority": "11",
+              "is_Total": false,
+              "profit_And_Loss": -2579685176,
+              "profit_And_Loss_Ratio_To_Previous_Year": 74.59559885609768
+            }
+          ],
+          "total_Profit_And_Loss": 3281868867,
+          "total_Profit_And_Loss_Ratio_To_Previous_Year": 2927.9828399279095
+        },
+        {
+          "statement_Category1": "سود عملیاتی",
+          "is_Total": true,
+          "categories_Level2": [
+            {
+              "statement_Category2": "سایر درآمد ها و هزینه های عملیاتی",
+              "priority": "8",
+              "is_Total": false,
+              "profit_And_Loss": 184189662,
+              "profit_And_Loss_Ratio_To_Previous_Year": -153.02230945829916
+            },
+            {
+              "statement_Category2": "هزینه های اداری و فروش",
+              "priority": "9",
+              "is_Total": false,
+              "profit_And_Loss": -5200918383,
+              "profit_And_Loss_Ratio_To_Previous_Year": 54.81897994962826
+            }
+          ],
+          "total_Profit_And_Loss": 4004760286,
+          "total_Profit_And_Loss_Ratio_To_Previous_Year": 106.8548011444845
+        },
+        {
+          "statement_Category1": "سود ناخالص",
+          "is_Total": true,
+          "categories_Level2": [
+            {
+              "statement_Category2": "بهای تمام شده کالای فروش رفته",
+              "priority": "8",
+              "is_Total": false,
+              "profit_And_Loss": -47065577481,
+              "profit_And_Loss_Ratio_To_Previous_Year": 48.21455504806285
+            },
+            {
+              "statement_Category2": "درآمد های عملیاتی",
+              "priority": "7",
+              "is_Total": false,
+              "profit_And_Loss": 55557414946,
+              "profit_And_Loss_Ratio_To_Previous_Year": 50.13022127916078
+            }
+          ],
+          "total_Profit_And_Loss": 8491837464,
+          "total_Profit_And_Loss_Ratio_To_Previous_Year": 61.714806627326844
+        }
+      ]
+    },
+
+
+به بهترین شکل ممکن تغییرات رو ایجاد کن
